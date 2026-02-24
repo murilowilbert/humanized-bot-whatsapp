@@ -91,7 +91,7 @@ async function searchProduct(query) {
     const products = await loadStock();
 
     // Clean punctuation and remove conversational filler words
-    const cleanQuery = query.toLowerCase().replace(/[?,.!\\n]/g, ' ');
+    const cleanQuery = query.toLowerCase().replace(/[?,.!\n]/g, ' ');
     // REMOVIDO: 'chuveiro', 'torneira', pois são categorias chave que precisam ser pesquisadas se o cliente não citar a marca.
     const stopWords = ['voces', 'tem', 'algum', 'de', 'da', 'do', 'um', 'uma', 'quais', 'qual', 'o', 'a', 'quero', 'gostaria', 'saber', 'se', 'por', 'favor', 'como', 'funciona', 'para', 'que', 'serve', 'marca', 'marcas', 'vocês', 'você', 'voce', 'temos', 'modelo', 'modelos', 'ola', 'bom', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'certo', 'preciso'];
 

@@ -69,9 +69,9 @@ async function searchProductInSheet(keywords) {
     const data = await fetchGoogleSheetCSV(csvUrl);
     if (!data) return null; // Erro no download, pula para fallback
 
-    const cleanKeywords = keywords.toLowerCase().replace(/[?,.!\\n]/g, ' ');
+    const cleanKeywords = keywords.toLowerCase().replace(/[?,.!\n]/g, ' ');
     const stopWords = ['voces', 'tem', 'algum', 'de', 'da', 'do', 'um', 'uma', 'quais', 'qual', 'o', 'a', 'quero', 'gostaria', 'saber', 'se', 'por', 'favor', 'como', 'funciona', 'para', 'que', 'serve', 'marca', 'marcas', 'vocês', 'você', 'voce', 'temos', 'modelo', 'modelos', 'ola', 'bom', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'certo', 'preciso'];
-    const searchTerms = cleanKeywords.split(/\\s+/).filter(p => p.length > 2 && !stopWords.includes(p));
+    const searchTerms = cleanKeywords.split(/\s+/).filter(p => p.length > 2 && !stopWords.includes(p));
 
     if (searchTerms.length === 0) return []; // Procura muito curta
 
