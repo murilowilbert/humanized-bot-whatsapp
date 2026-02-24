@@ -1,0 +1,41 @@
+name: Deploy Bot Ferragem Marlene
+
+on:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. O GitHub pega o código atualizado do seu repositório
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      # 2. O GitHub copia os arquivos do projeto para o seu servidor no Google Cloud
+      - name: Copiar arquivos para o servidor
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "."
+          target: "~/bot-ferragem"
+
+      # 3. O GitHub acessa o servidor e roda o Docker para subir o bot
+      - name: Executar Docker no Servidor
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/bot-ferragem
+            # Constrói a imagem do Docker com o código novo
+            sudo docker build -t bot-image .
+            # Para e deleta a versão antiga do bot (se existir)
+            sudo docker stop bot-marlene || true
+            sudo docker rm bot-marlene || true
+            # Roda a versão nova em segundo plano
+            sudo docker run -d --name bot-marlene bot-image
