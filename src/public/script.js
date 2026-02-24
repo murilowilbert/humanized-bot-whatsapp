@@ -5,6 +5,7 @@ const socket = io();
 socket.on('status', (data) => {
     document.getElementById('bot-toggle').checked = data.enabled;
     document.getElementById('test-toggle').checked = data.testMode;
+    document.getElementById('fullstock-toggle').checked = data.fullStockEnabled;
     const badge = document.getElementById('status-badge');
     const startBtn = document.getElementById('start-btn');
 
@@ -79,6 +80,12 @@ window.toggleTestMode = async function () {
     const currentState = document.getElementById('test-toggle').checked;
     console.log("Toggling Test Mode:", currentState);
     await sendToggle('test', currentState);
+}
+
+window.toggleFullStock = async function () {
+    const currentState = document.getElementById('fullstock-toggle').checked;
+    console.log("Toggling Full Stock:", currentState);
+    await sendToggle('fullstock', currentState);
 }
 
 window.startBot = async function () {

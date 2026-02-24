@@ -41,9 +41,14 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
                 "- Diga: '*Resistência p/ Torneira Lorenzetti Essence* (220V / 5500W)'\n" +
                 "Qualquer mensagem contendo ALL CAPS ou jargões puros do banco de dados resultará em falha crítica.";
 
+            const server = require('../server/app');
+            const isFullStockEnabled = server.isFullStockEnabled();
+
             const stockInfoText = stockContext.length > 0
                 ? "### ESTOQUE ATUALIZADO (Use estes dados para recomendar):\n" + JSON.stringify(stockContext, null, 2)
-                : "### ESTOQUE: A princípio não encontramos o item exato, mas tente conduzir a conversa (sem falar 'o sistema indica que não tem', aja como humano).";
+                : (isFullStockEnabled
+                    ? "### ESTOQUE: A princípio não encontramos o item exato, mas tente conduzir a conversa (sem falar 'o sistema indica que não tem', aja como humano). Aja normalmente oferecendo similares genéricos."
+                    : "### ESTOQUE: ITEM NÃO ENCONTRADO NA TABELA. Você DEVE acionar a transferência para um atendente humano imediatamente usando a regra de Handoff, não afirme que não temos.");
 
             const isFirstMessage = chatHistory.length <= 1; // includes current message
 
@@ -59,7 +64,10 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
                 "- FOTOS DO CLIENTE: O sistema já leu a imagem e injetou os possíveis produtos no estoque. AJA NATURALMENTE. NUNCA use frases robóticas como 'Com base na foto', 'Analisando a imagem', 'O sistema identificou', etc. Apenas assuma que você viu a foto e vá direto ao ponto (ex: 'Sim, nós temos a Ducha Ducali por...').\n" +
-                "- ESTOQUE VAZIO: NUNCA diga 'Nosso estoque indica Produto não encontrado'. Diga apenas 'Pior que não tenho essa marca no momento' ou ofereça um similar amigavelmente.\n" +
+                (isFullStockEnabled
+                    ? "- ESTOQUE VAZIO: NUNCA diga 'Nosso estoque indica Produto não encontrado'. Diga apenas 'Pior que não tenho essa marca no momento' ou ofereça um similar amigavelmente.\n"
+                    : "- ESTOQUE VAZIO: NUNCA Diga que 'não temos' ou 'não tem essa marca'. De imediato use a regra de HANDOFF ('Vou repassar para um atendente responder certinho...').\n"
+                ) +
                 "- TELE-ENTREGA: Quando alguém perguntar de tele-entrega, responda EXATAMENTE: 'Infelizmente ainda não possuímos tele-entrega 😕' (ou use outro emoji similar).\n" +
                 "- LOCALIZAÇÃO: Se pedir endereço, envie o endereço amigavelmente e obrigatoriamente inclua a tag exata no final da resposta: [ACTION: SEND_LOCATION] (pois o sistema interceptará essa tag para enviar o mapa do GPS). Exemplo: 'Nossa loja fica na Rua Osvaldo Cruz, 417, Centro, Igrejinha, pertinho da Rua Coberta! [ACTION: SEND_LOCATION]'\n" +
                 "- LISTAGEM DE MARCAS: Se o cliente perguntar 'tem quais marcas?' ou 'quais opções tem?', VERIFIQUE O ESTOQUE ENVIADO E SEMPRE CITE TODAS AS MARCAS que constam ali naquele momento, para não perder vendas. Exemplo: 'Temos opções da Zagonel, Sintex e Lorenzetti!'.\n" +

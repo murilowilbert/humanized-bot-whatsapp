@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 3000;
 // State
 let botEnabled = false;
 let testMode = false;
+let fullStockEnabled = false;
 const ALLOWED_NUMBERS = ['555199106294', '189524122574884', '555196870986', '555199078225', '224704216436825']; // User's numbers
 
 app.use(cors());
@@ -44,7 +45,8 @@ function emitEvent(event, data) {
 io.on('connection', (socket) => {
     console.log('Cliente Web conectado');
     // Send current status immediately
-    socket.emit('status', { enabled: botEnabled });
+    const bot = require('../bot');
+    socket.emit('status', { enabled: botEnabled, testMode: testMode, fullStockEnabled: fullStockEnabled, initialized: bot.isInitialized ? bot.isInitialized() : false });
 });
 
 // API Routes
@@ -55,11 +57,13 @@ app.post('/api/toggle', (req, res) => {
         botEnabled = req.body.enabled;
     } else if (req.body.type === 'test') {
         testMode = req.body.enabled;
+    } else if (req.body.type === 'fullstock') {
+        fullStockEnabled = req.body.enabled;
     }
 
-    io.emit('status', { enabled: botEnabled, testMode: testMode });
-    console.log(`Bot Status: Power=${botEnabled}, TestMode=${testMode}`);
-    res.json({ success: true, enabled: botEnabled, testMode: testMode });
+    io.emit('status', { enabled: botEnabled, testMode: testMode, fullStockEnabled: fullStockEnabled });
+    console.log(`Bot Status: Power=${botEnabled}, TestMode=${testMode}, FullStock=${fullStockEnabled}`);
+    res.json({ success: true, enabled: botEnabled, testMode: testMode, fullStockEnabled: fullStockEnabled });
 });
 
 // Get Bot Status
@@ -163,8 +167,19 @@ function isTestMode() {
     return testMode;
 }
 
+function isFullStockEnabled() {
+    return fullStockEnabled;
+}
+
 function getAllowedNumbers() {
     return ALLOWED_NUMBERS;
 }
 
-module.exports = { startServer, emitEvent, isBotEnabled, isTestMode, getAllowedNumbers };
+module.exports = {
+    startServer,
+    isBotEnabled,
+    isTestMode,
+    isFullStockEnabled,
+    getAllowedNumbers,
+    emitEvent
+};

@@ -81,12 +81,19 @@ async function searchProduct(query) {
         return dynamicResults;
     }
 
+    const server = require('../server/app');
+    if (!server.isFullStockEnabled()) {
+        console.log(`[Busca Restrita] Estoque Completo desativado. Nenhum item encontrado na planilha para "${query}". Bypassing fallback.`);
+        return [];
+    }
+
     // 2. Fallback: Busca no arquivo de banco de dados offline/estático
     const products = await loadStock();
 
     // Clean punctuation and remove conversational filler words
     const cleanQuery = query.toLowerCase().replace(/[?,.!\\n]/g, ' ');
-    const stopWords = ['hydra', 'chuveiro', 'chuveiros', 'torneira', 'torneiras', 'voces', 'tem', 'algum', 'de', 'da', 'do', 'um', 'uma', 'quais', 'qual', 'o', 'a', 'quero', 'gostaria', 'saber', 'se', 'por', 'favor', 'como', 'funciona', 'para', 'que', 'serve', 'marca', 'marcas', 'vocês', 'você', 'voce', 'temos', 'modelo', 'modelos', 'ola', 'bom', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'certo', 'preciso'];
+    // REMOVIDO: 'chuveiro', 'torneira', pois são categorias chave que precisam ser pesquisadas se o cliente não citar a marca.
+    const stopWords = ['voces', 'tem', 'algum', 'de', 'da', 'do', 'um', 'uma', 'quais', 'qual', 'o', 'a', 'quero', 'gostaria', 'saber', 'se', 'por', 'favor', 'como', 'funciona', 'para', 'que', 'serve', 'marca', 'marcas', 'vocês', 'você', 'voce', 'temos', 'modelo', 'modelos', 'ola', 'bom', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'certo', 'preciso'];
 
     const words = cleanQuery.split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
 
