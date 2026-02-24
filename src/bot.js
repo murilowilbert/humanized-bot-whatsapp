@@ -70,7 +70,7 @@ async function sendHumanLikeResponse(jid, text) {
         let part = parts[i].trim();
         if (!part) continue;
 
-        const codMatch = part.match(/\[COD:\s*(\w+)\]/);
+        const codMatch = part.match(/\[COD:\s*([\w-]+)\]/);
         let fileToSend = null;
 
         if (codMatch) {
