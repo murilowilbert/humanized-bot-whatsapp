@@ -22,6 +22,16 @@ const ALLOWED_NUMBERS = ['555199106294', '189524122574884', '555196870986', '555
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// Permite a criação do QRCode e scripts externos do painel
+app.use((req, res, next) => {
+    res.setHeader(
+        'Content-Security-Policy',
+        "default-src *; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com"
+    );
+    next();
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Store IO instance globally to be used by bot.js (via export or event bus)
