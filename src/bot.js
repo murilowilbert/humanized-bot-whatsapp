@@ -445,7 +445,7 @@ async function initialize() {
             auth: state,
             printQRInTerminal: false,
             logger: pino({ level: 'silent' }), // Suppress detailed terminal logs from baileys
-            browser: ['Ferragem Marlene API', 'Chrome', '1.0.0']
+            browser: ['Ubuntu', 'Chrome', '20.0.04']
         });
 
         setupEvents();
