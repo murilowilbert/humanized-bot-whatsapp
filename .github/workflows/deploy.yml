@@ -30,6 +30,7 @@ jobs:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 45m
           script: |
             cd ~/bot-ferragem
             # Constrói a imagem do Docker com o código novo
