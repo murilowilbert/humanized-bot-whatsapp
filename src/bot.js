@@ -445,8 +445,9 @@ async function initialize() {
             auth: state,
             printQRInTerminal: false,
             logger: pino({ level: 'silent' }), // Suppress detailed terminal logs from baileys
-            browser: Browsers.macOS('Desktop'),
-            syncFullHistory: false
+            browser: Browsers.baileys('Desktop'),
+            syncFullHistory: false,
+            generateHighQualityLinkPreview: true
         });
 
         setupEvents();
