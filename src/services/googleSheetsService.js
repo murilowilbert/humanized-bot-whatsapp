@@ -82,21 +82,29 @@ async function searchProductInSheet(keywords) {
         // Obter todo o texto da linha (fallback geral)
         const rowText = Object.values(item).join(' ').toLowerCase();
 
-        // Puxar a coluna de tags explicitamente se existir
-        const tags = (item['tags para busca (sinônimos)'] || '').toLowerCase();
+        // Extrair todas as colunas pedidas explicitamente na formatação lowercase
         const title = (item['modelo/produto'] || '').toLowerCase();
+        const tags = (item['tags para busca (sinônimos)'] || '').toLowerCase();
+        const marca = (item['marca'] || '').toLowerCase();
+        const categoria = (item['categoria'] || '').toLowerCase();
+        const chars = (item['características principais'] || '').toLowerCase();
+        const codigo = (item['código'] || item['codigo'] || '').toLowerCase();
 
         for (const term of searchTerms) {
-            // Peso alto para título exato
-            if (title.includes(term)) {
+            // Peso Altíssimo para Título exato, Código ou Marca Exata
+            if (title.includes(term) || codigo.includes(term) || marca === term) {
+                matchCount += 4;
+            }
+            // Peso Alto para Tags diretas
+            else if (tags.includes(term)) {
                 matchCount += 3;
             }
-            // Peso médio para tags (sinônimos como patinho)
-            else if (tags.includes(term)) {
+            // Peso Médio para Categoria ou Marca Parcial
+            else if (categoria.includes(term) || marca.includes(term)) {
                 matchCount += 2;
             }
-            // Peso menor para qualquer outra parte (características, marca, etc)
-            else if (rowText.includes(term)) {
+            // Peso Baixo para menção livre nas Características ou Fallback geral
+            else if (chars.includes(term) || rowText.includes(term)) {
                 matchCount += 1;
             }
         }
