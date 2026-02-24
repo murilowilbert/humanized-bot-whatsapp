@@ -54,12 +54,12 @@ app.post('/api/toggle', (req, res) => {
 
 // Get Bot Status
 app.get('/api/status', (req, res) => {
-    // Check if bot client is initialized (we'll need to check bot.js for this)
+    // Check if bot client is initialized
     const bot = require('../bot');
     res.json({
         enabled: botEnabled,
         testMode: testMode,
-        initialized: bot.isInitialized ? bot.isInitialized() : false
+        initialized: bot.isInitialized()
     });
 });
 

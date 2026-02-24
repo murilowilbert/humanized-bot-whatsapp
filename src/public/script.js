@@ -12,16 +12,20 @@ socket.on('status', (data) => {
         startBtn.style.display = 'none';
         badge.className = "badge online";
         badge.innerHTML = '<i data-lucide="check-circle"></i> Sistema Pronto';
+        if (data.enabled) {
+            badge.innerHTML += ' | Ativo';
+        }
     } else {
         startBtn.style.display = 'flex';
         badge.className = "badge offline";
-        badge.innerHTML = '<i data-lucide="wifi-off"></i> Bot Desligado';
+
+        if (data.enabled) {
+            badge.innerHTML = '<i data-lucide="loader"></i> Aguardando QR Code...';
+        } else {
+            badge.innerHTML = '<i data-lucide="wifi-off"></i> Bot Desligado';
+        }
     }
 
-    if (data.enabled) {
-        badge.className = "badge online";
-        badge.innerHTML += ' | Ativo';
-    }
     lucide.createIcons();
 });
 
