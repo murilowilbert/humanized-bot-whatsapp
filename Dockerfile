@@ -14,4 +14,4 @@ COPY . .
 # ESSA É A LINHA QUE VAI SALVAR O DIA:
 RUN npx prisma generate
 
-CMD ["node", "index.js"]
+CMD npx prisma db push && node index.js

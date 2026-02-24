@@ -38,5 +38,7 @@ jobs:
             # Para e deleta a versão antiga do bot (se existir)
             docker stop bot-marlene || true
             docker rm bot-marlene || true
+            # Certifica de que o arquivo SQlite exista antes no servidor pra poder montar
+            touch ~/bot-ferragem/dev.db
             # Roda a versão nova em segundo plano
-            docker run -d -p 3000:3000 -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys --name bot-marlene bot-image
+            docker run -d -p 3000:3000 -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys -v ~/bot-ferragem/dev.db:/app/dev.db --name bot-marlene bot-image
