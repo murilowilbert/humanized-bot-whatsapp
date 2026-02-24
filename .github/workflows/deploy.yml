@@ -13,23 +13,29 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      # 2. O GitHub copia os arquivos do projeto para o seu servidor no Google Cloud
+      # 2. Decodifica a Chave SSH de Base64 para o arquivo original
+      - name: Decode SSH Private Key
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" | base64 -d > private_key.pem
+          chmod 600 private_key.pem
+
+      # 3. O GitHub copia os arquivos do projeto para o seu servidor no Google Cloud
       - name: Copiar arquivos para o servidor
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key_path: "private_key.pem"
           source: "."
           target: "~/bot-ferragem"
 
-      # 3. O GitHub acessa o servidor e roda o Docker para subir o bot
+      # 4. O GitHub acessa o servidor e roda o Docker para subir o bot
       - name: Executar Docker no Servidor
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key_path: "private_key.pem"
           command_timeout: 45m
           script: |
             cd ~/bot-ferragem
