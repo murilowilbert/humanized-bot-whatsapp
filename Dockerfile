@@ -11,4 +11,7 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 
+# ESSA É A LINHA QUE VAI SALVAR O DIA:
+RUN npx prisma generate
+
 CMD ["node", "index.js"]
