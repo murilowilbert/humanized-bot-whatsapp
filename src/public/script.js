@@ -45,7 +45,16 @@ socket.on('qr', (qrData) => {
     });
 });
 
-socket.on('ready', () => {
+socket.on('ready', (isReady) => {
+    if (!isReady) {
+        // Se isReady vier falso (desconectou), reseta para o estado Aguardando QR.
+        const badge = document.getElementById('status-badge');
+        badge.className = "badge offline";
+        badge.innerHTML = '<i data-lucide="loader"></i> Aguardando Conexão...';
+        lucide.createIcons();
+        return;
+    }
+
     document.getElementById('qr-container').style.display = 'none';
     const badge = document.getElementById('status-badge');
     badge.className = "badge online";
