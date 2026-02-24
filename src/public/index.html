@@ -11,7 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
-<body>
+<body class="bg-base">
     <div class="container">
         <header>
             <div class="logo-area">
@@ -108,6 +108,70 @@
                         <button onclick="addHoliday()"><i data-lucide="plus"></i> Adicionar</button>
                     </div>
                     <ul id="holiday-list"></ul>
+                </div>
+            </section>
+
+            <section class="neural-net-section">
+                <div class="card neural-card">
+                    <h2
+                        style="position: absolute; top: 20px; left: 20px; z-index: 5; margin: 0; color: var(--text-primary); text-shadow: 0 0 10px rgba(255,255,255,0.5);">
+                        <i data-lucide="network"></i> Cérebro do Assistente Virtual
+                    </h2>
+
+                    <svg class="net-lines" preserveAspectRatio="none">
+                        <!-- User to Queue -->
+                        <path d="M 8.5% 45.8% L 25% 45.8%"></path>
+                        <!-- Queue to Brain -->
+                        <path d="M 31% 45.8% L 50% 45.8%" class="active-pulse"></path>
+                        <!-- Brain to Sheets -->
+                        <path d="M 55% 42% L 80% 21%"></path>
+                        <!-- Brain to SQL -->
+                        <path d="M 55% 49% L 80% 69%"></path>
+                    </svg>
+
+                    <div class="node node-user" style="top: 40%; left: 5%;">
+                        <i data-lucide="user"></i>
+                        <div class="tooltip">
+                            <h4>1. Cliente</h4>
+                            <p>Envia áudios, fotos ou mensagens curtas e fragmentadas pelo WhatsApp.</p>
+                        </div>
+                    </div>
+
+                    <div class="node node-queue" style="top: 40%; left: 25%;">
+                        <i data-lucide="filter"></i>
+                        <div class="tooltip">
+                            <h4>2. Queue & Debounce</h4>
+                            <p>Segura as mensagens do cliente por 5s para juntá-las numa única requisição antes de
+                                passar para a Inteligência.</p>
+                        </div>
+                    </div>
+
+                    <div class="node node-brain primary spin" style="animation-duration: 20s; top: 40%; left: 50%;">
+                        <i data-lucide="brain-circuit"></i>
+                        <div class="tooltip">
+                            <h4>3. Agente Gemini 2.5</h4>
+                            <p>Interpreta a intenção do cliente, procura a "Persona", analisa imagens e formata
+                                respostas persuasivas.</p>
+                        </div>
+                    </div>
+
+                    <div class="node node-sheets success" style="top: 15%; left: 80%;">
+                        <i data-lucide="table"></i>
+                        <div class="tooltip">
+                            <h4>4. API Google Sheets</h4>
+                            <p>Atua na nuvem rastreando a planilha com base no algoritmo de pontos (Priorizando Cor e
+                                Modelo exato).</p>
+                        </div>
+                    </div>
+
+                    <div class="node node-sql" style="top: 65%; left: 80%;">
+                        <i data-lucide="database"></i>
+                        <div class="tooltip">
+                            <h4>5. SQLite DB</h4>
+                            <p>Responsável pelo contexto contínuo. "Lembra" do que foi falado antes sem estourar limites
+                                tarifários.</p>
+                        </div>
+                    </div>
                 </div>
             </section>
         </main>
