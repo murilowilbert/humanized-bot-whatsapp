@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+auth_info_baileys
+.wwebjs_auth
+.wwebjs_cache
+*.db
+*.sqlite
+dev.db
