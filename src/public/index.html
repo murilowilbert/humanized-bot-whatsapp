@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Ferragem Marlene</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-area">
+                <i data-lucide="hammer" class="logo-icon"></i>
+                <h1>Ferragem Marlene</h1>
+            </div>
+            <div class="header-controls">
+                <div id="status-badge" class="badge offline">
+                    <i data-lucide="wifi-off"></i> Desconectado
+                </div>
+
+                <button class="btn btn-primary" id="start-btn" onclick="startBot()">
+                    <i data-lucide="play"></i> Iniciar Bot
+                </button>
+
+                <button class="btn btn-danger" id="restart-btn" onclick="restartSystem()"
+                    title="Fecha bots fantasmas e inicia novo">
+                    <i data-lucide="refresh-cw"></i> Reiniciar
+                </button>
+
+                <div class="toggle-wrapper" title="Modo Teste (Apenas Eu)">
+                    <i data-lucide="test-tube"></i>
+                    <label class="switch">
+                        <input type="checkbox" id="test-toggle" onclick="toggleTestMode()">
+                        <span class="slider round warning"></span>
+                    </label>
+                </div>
+
+                <div class="toggle-wrapper" title="Ligar/Desligar Bot">
+                    <i data-lucide="bot"></i>
+                    <label class="switch">
+                        <input type="checkbox" id="bot-toggle" onclick="toggleBot()">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+        </header>
+
+        <section class="qr-section" id="qr-container" style="display: none;">
+            <div class="qr-content">
+                <h2><i data-lucide="qr-code"></i> Conectar WhatsApp</h2>
+                <div id="qrcode-wrapper">
+                    <div id="qrcode"></div>
+                </div>
+                <p>Abra o WhatsApp > Menu > Aparelhos Conectados > <b>Conectar Aparelho</b></p>
+            </div>
+        </section>
+
+        <main>
+            <section class="stats-grid">
+                <div class="card stat-card">
+                    <div class="stat-icon"><i data-lucide="message-square"></i></div>
+                    <div class="stat-info">
+                        <h3>Mensagens</h3>
+                        <p id="msg-count">0</p>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-icon"><i data-lucide="user-plus"></i></div>
+                    <div class="stat-info">
+                        <h3>Redirecionamentos</h3>
+                        <p id="handoff-count">0</p>
+                    </div>
+                </div>
+                <div class="card stat-card alert">
+                    <div class="stat-icon"><i data-lucide="alert-triangle"></i></div>
+                    <div class="stat-info">
+                        <h3>Demanda Reprimida</h3>
+                        <p id="missed-count">Ver CSV</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="dashboard-grid">
+                <div class="card chart-card">
+                    <h2><i data-lucide="smile"></i> Satisfação dos Clientes</h2>
+                    <div class="chart-wrapper">
+                        <canvas id="satisfactionChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card holidays-card">
+                    <h2><i data-lucide="calendar-off"></i> Dias Fechados</h2>
+                    <div class="input-group">
+                        <input type="date" id="holiday-input">
+                        <button onclick="addHoliday()"><i data-lucide="plus"></i> Adicionar</button>
+                    </div>
+                    <ul id="holiday-list"></ul>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="script.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+
+</html>

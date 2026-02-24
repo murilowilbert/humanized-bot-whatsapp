@@ -1,0 +1,12 @@
+node_modules
+# Keep environment variables out of version control
+.env
+.env.local
+
+/src/generated/prisma
+auth_info_baileys/
+.wwebjs_auth/
+.wwebjs_cache/
+dev.db
+*.db
+*.sqlite
