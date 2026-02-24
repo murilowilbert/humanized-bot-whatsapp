@@ -1,4 +1,4 @@
-FROM node:18
+FROM node:20
 
 # Instala as dependências do sistema operacional para o navegador invisível
 RUN apt-get update && apt-get install -y wget gnupg \
