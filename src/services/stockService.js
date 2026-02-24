@@ -90,8 +90,11 @@ async function searchProduct(query) {
     // 2. Fallback: Busca no arquivo de banco de dados offline/estático
     const products = await loadStock();
 
+    // Ensure query is a string for the offline fallback methods
+    const queryString = Array.isArray(query) ? query.join(' ') : query;
+
     // Clean punctuation and remove conversational filler words
-    const cleanQuery = query.toLowerCase().replace(/[?,.!\n]/g, ' ');
+    const cleanQuery = queryString.toLowerCase().replace(/[?,.!\n]/g, ' ');
     // REMOVIDO: 'chuveiro', 'torneira', pois são categorias chave que precisam ser pesquisadas se o cliente não citar a marca.
     const stopWords = ['voces', 'tem', 'algum', 'de', 'da', 'do', 'um', 'uma', 'quais', 'qual', 'o', 'a', 'quero', 'gostaria', 'saber', 'se', 'por', 'favor', 'como', 'funciona', 'para', 'que', 'serve', 'marca', 'marcas', 'vocês', 'você', 'voce', 'temos', 'modelo', 'modelos', 'ola', 'bom', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'certo', 'preciso'];
 

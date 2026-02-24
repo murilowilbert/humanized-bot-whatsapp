@@ -1,5 +1,10 @@
 // Google Sheets API Integration Service
 // Usando 'fetch' nativo do Node 18+
+const Fuse = require('fuse.js');
+
+let sheetCache = null;
+let lastCacheTime = 0;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
 
 // Função auxiliar para interpretar a linha do CSV com aspas
 function parseCSVRow(str) {
@@ -57,68 +62,69 @@ async function fetchGoogleSheetCSV(csvUrl) {
     }
 }
 
-/**
- * Busca por palavras-chaves nos itens dinâmicos do Google Sheets
- */
-async function searchProductInSheet(keywords) {
+async function getCachedSheetData() {
+    const now = Date.now();
+    if (sheetCache && (now - lastCacheTime) < CACHE_TTL_MS) {
+        return sheetCache;
+    }
+
     const csvUrl = process.env.GOOGLE_SHEET_CSV_URL;
-    if (!csvUrl) {
-        return null; // Não configurado, pula para o Fallback.
-    }
+    if (!csvUrl) return null;
 
+    console.log("[Google Sheets] Baixando planilha e atualizando Cache em Memória...");
     const data = await fetchGoogleSheetCSV(csvUrl);
-    if (!data) return null; // Erro no download, pula para fallback
-
-    const cleanKeywords = keywords.toLowerCase().replace(/[?,.!\n]/g, ' ');
-    const stopWords = ['voces', 'tem', 'algum', 'de', 'da', 'do', 'um', 'uma', 'quais', 'qual', 'o', 'a', 'quero', 'gostaria', 'saber', 'se', 'por', 'favor', 'como', 'funciona', 'para', 'que', 'serve', 'marca', 'marcas', 'vocês', 'você', 'voce', 'temos', 'modelo', 'modelos', 'ola', 'bom', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'certo', 'preciso'];
-    const searchTerms = cleanKeywords.split(/\s+/).filter(p => p.length > 2 && !stopWords.includes(p));
-
-    if (searchTerms.length === 0) return []; // Procura muito curta
-
-    const results = [];
-    for (const item of data) {
-        let matchCount = 0;
-
-        // Obter todo o texto da linha (fallback geral)
-        const rowText = Object.values(item).join(' ').toLowerCase();
-
-        // Extrair todas as colunas pedidas explicitamente na formatação lowercase
-        const title = (item['modelo/produto'] || '').toLowerCase();
-        const tags = (item['tags para busca (sinônimos)'] || '').toLowerCase();
-        const marca = (item['marca'] || '').toLowerCase();
-        const categoria = (item['categoria'] || '').toLowerCase();
-        const chars = (item['características principais'] || '').toLowerCase();
-        const codigo = (item['código'] || item['codigo'] || '').toLowerCase();
-
-        for (const term of searchTerms) {
-            // Peso Altíssimo para Título exato, Código ou Marca Exata
-            if (title.includes(term) || codigo.includes(term) || marca === term) {
-                matchCount += 4;
-            }
-            // Peso Alto para Tags diretas
-            else if (tags.includes(term)) {
-                matchCount += 3;
-            }
-            // Peso Médio para Categoria ou Marca Parcial
-            else if (categoria.includes(term) || marca.includes(term)) {
-                matchCount += 2;
-            }
-            // Peso Baixo para menção livre nas Características ou Fallback geral
-            else if (chars.includes(term) || rowText.includes(term)) {
-                matchCount += 1;
-            }
-        }
-
-        if (matchCount > 0) {
-            results.push({ item, matchCount });
-        }
+    if (data) {
+        sheetCache = data;
+        lastCacheTime = now;
     }
-
-    // Ordena pelo maior número de termos encontrados
-    results.sort((a, b) => b.matchCount - a.matchCount);
-
-    // Retorna os top 8 resultados (aumentando a amostragem para a IA decidir melhor)
-    return results.slice(0, 8).map(r => r.item);
+    return sheetCache;
 }
 
-module.exports = { searchProductInSheet };
+/**
+ * Busca por palavras-chaves nos itens dinâmicos do Google Sheets
+ * @param {Array<string>|string} keywordsArray Pode ser String crua ou Array expandido da IA
+ */
+async function searchProductInSheet(keywordsArray) {
+    const data = await getCachedSheetData();
+    if (!data || data.length === 0) return null;
+
+    let searchTerms = Array.isArray(keywordsArray) ? keywordsArray : [keywordsArray];
+
+    // Configuração do Fuse.js
+    const options = {
+        includeScore: true,
+        threshold: 0.4, // Grau de Fuzzy (0.0 é exato, 1.0 acha qualquer coisa)
+        ignoreLocation: true,
+        keys: [
+            { name: 'modelo/produto', weight: 0.6 },
+            { name: 'tags para busca (sinônimos)', weight: 0.3 },
+            { name: 'características principais', weight: 0.1 }
+        ]
+    };
+
+    const fuse = new Fuse(data, options);
+    let allResults = [];
+    const seenItems = new Set();
+
+    for (const term of searchTerms) {
+        const results = fuse.search(term);
+        for (const res of results) {
+            const itemId = res.item['código'] || res.item['codigo'] || res.item['modelo/produto'];
+            if (!seenItems.has(itemId)) {
+                seenItems.add(itemId);
+                allResults.push({ item: res.item, score: res.score });
+            }
+        }
+    }
+
+    // Ordena pelo menor 'score' do Fuse.js (menor = melhor match)
+    allResults.sort((a, b) => a.score - b.score);
+
+    // Retorna no formato legado para compatibilidade: { item, matchCount }
+    return allResults.slice(0, 15).map(r => ({
+        item: r.item,
+        matchCount: Math.round((1 - r.score) * 10) // Converte score invertido pra peso antigo
+    }));
+}
+
+module.exports = { fetchGoogleSheetCSV, searchProductInSheet };

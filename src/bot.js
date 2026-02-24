@@ -70,7 +70,8 @@ async function sendHumanLikeResponse(jid, text) {
         let part = parts[i].trim();
         if (!part) continue;
 
-        const codMatch = part.match(/\[COD:\s*([\w-]+)\]/);
+        // regex to catch both [COD: 123] and {{COD: 123}}
+        const codMatch = part.match(/(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/i);
         let fileToSend = null;
 
         if (codMatch) {
@@ -81,7 +82,9 @@ async function sendHumanLikeResponse(jid, text) {
                 path.join(__dirname, `../data/fotos/${cod}.jpg`),
                 path.join(__dirname, `../data/fotos/${cod}.png`),
                 path.join(__dirname, `../data/fotos_sheets/${cod}.jpg`),
-                path.join(__dirname, `../data/fotos_sheets/${cod}.png`)
+                path.join(__dirname, `../data/fotos_sheets/${cod}.png`),
+                path.join(__dirname, `../assets/imagens_produtos/${cod}.jpg`),
+                path.join(__dirname, `../assets/imagens_produtos/${cod}.png`)
             ];
             fileToSend = pathsToCheck.find(p => fs.existsSync(p));
         }
@@ -107,6 +110,8 @@ async function sendHumanLikeResponse(jid, text) {
     }
 }
 
+let isDeliberateClose = false;
+
 async function setupEvents() {
     sock.ev.on('creds.update', (...args) => {
         // Credenciais são atualizadas automaticamente pelo start
@@ -122,7 +127,7 @@ async function setupEvents() {
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut && !isDeliberateClose;
             console.log('connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
             initialized = false;
             server.emitEvent('ready', false);
@@ -132,6 +137,7 @@ async function setupEvents() {
             }
         } else if (connection === 'open') {
             console.log('Client is ready!');
+            isDeliberateClose = false;
             initialized = true;
             server.emitEvent('ready', true);
         }
@@ -290,13 +296,13 @@ async function setupEvents() {
                 });
                 const chatsHistory = historyRecords.map(r => ({ role: r.role, content: r.content }));
 
-                // Inteligência Artificial: Se a mensagem contiver poucas palavras ou for muito vaga (ex: "mais em conta"), 
-                // vamos puxar os substantivos chave do histórico das MENSAGENS ANTERIORES do cliente para anexar a pesquisa.
+                // Inteligência Artificial: Query Expansion
+                // Transforma a intenção em um array rico de sinônimos técnicos
                 let searchKeywords = combinedText;
-                if (combinedText.split(' ').length <= 4 && historyRecords.length > 2) {
-                    // Pega as últimas 3 interações (incluindo a atual) para criar um contexto denso e amarrado pro Google Sheets procurar
-                    const recentContext = historyRecords.slice(-3).map(r => r.content).join(" ");
-                    searchKeywords = recentContext;
+                let recentContext = "";
+
+                if (historyRecords.length > 2) {
+                    recentContext = historyRecords.slice(-4).map(r => r.content).join(" ");
                 }
 
                 if (lastMedia && lastMedia.mimeType.startsWith('image/')) {
@@ -304,7 +310,11 @@ async function setupEvents() {
                     searchKeywords = await aiService.extractImageKeywords(lastMedia, searchKeywords);
                 }
 
-                const stockContext = searchKeywords ? await stockService.searchProduct(searchKeywords) : [];
+                await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
+                const expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentContext);
+
+                // Passa o array rico de expansões para o Fuse.js/Stock
+                const stockContext = await stockService.searchProduct(expandedQueryArray);
 
                 // 4. Generate Response & 5. Send Response
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
@@ -473,6 +483,7 @@ async function initialize() {
 }
 
 async function destroy() {
+    isDeliberateClose = true;
     if (sock) {
         try {
             if (sock.ws) sock.ws.close();

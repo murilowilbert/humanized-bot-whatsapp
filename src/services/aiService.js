@@ -226,8 +226,51 @@ async function extractImageKeywords(mediaData, textContent) {
     }
 }
 
+/**
+ * Amplia os termos de busca com IA para lidar com gírias e sinônimos frouxos
+ */
+async function expandSearchQuery(userMessage, recentContext = "") {
+    try {
+        const prompt = `Você é um especialista em materiais de construção e ferragens.
+Uma pessoa te perguntou isso: "${userMessage}".
+Aqui está um pouco do contexto recente da conversa (se houver): "${recentContext}".
+
+Sua tarefa: Expanda essa busca. Retorne ESTRITAMENTE um array JSON contendo palavras-chave e sinônimos úteis para pesquisar esse item no banco de dados.
+Regras:
+1. Inclua o termo original corrigido (ex: "tornera" -> "torneira").
+2. Inclua sinônimos populares e técnicos (ex: "durepoxi" -> "massa epóxi").
+3. Inclua a categoria ampla se for muito específico (ex: "lorenzetti" -> "chuveiro lorenzetti").
+4. Se pediu "mais barato" ou "em conta", garanta que as palavras centrais da categoria ainda sejam pesquisadas.
+5. RETORNE APENAS O ARRAY JSON, SEM MARCAÇÕES MARKDOWN E SEM JARGÕES EXTRAS.
+
+Exemplo 1: ["fita isolante", "fita adesiva isolante", "fita 3M"]
+Exemplo 2: ["chuveiro", "ducha eletrônica", "banho"]`;
+
+        const result = await model.generateContent(prompt);
+        let rawResponse = result.response.text().trim();
+
+        if (rawResponse.startsWith('```json')) {
+            rawResponse = rawResponse.substring(7, rawResponse.length - 3).trim();
+        } else if (rawResponse.startsWith('```')) {
+            rawResponse = rawResponse.substring(3, rawResponse.length - 3).trim();
+        }
+
+        const expandedTerms = JSON.parse(rawResponse);
+        console.log(`[Query Expansion] Original: "${userMessage}" -> Expandido:`, expandedTerms);
+
+        if (Array.isArray(expandedTerms)) {
+            return expandedTerms;
+        }
+        return [userMessage];
+    } catch (e) {
+        console.error("Erro no expandSearchQuery da IA:", e);
+        return [userMessage];
+    }
+}
+
 module.exports = {
     generateResponse,
     transcribeAudio,
-    extractImageKeywords
+    extractImageKeywords,
+    expandSearchQuery
 };
