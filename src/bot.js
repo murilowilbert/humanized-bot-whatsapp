@@ -277,14 +277,6 @@ async function setupEvents() {
                 // Clear the queue for this user
                 userMessageQueues.delete(jid);
 
-                let searchKeywords = combinedText;
-                if (lastMedia && lastMedia.mimeType.startsWith('image/')) {
-                    await sock.sendPresenceUpdate('composing', jid);
-                    searchKeywords = await aiService.extractImageKeywords(lastMedia, combinedText);
-                }
-
-                const stockContext = searchKeywords ? await stockService.searchProduct(searchKeywords) : [];
-
                 // DB History: Salvar a mensagem "juntada" do usuário
                 await prisma.chatHistory.create({
                     data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
@@ -297,6 +289,22 @@ async function setupEvents() {
                     take: 20
                 });
                 const chatsHistory = historyRecords.map(r => ({ role: r.role, content: r.content }));
+
+                // Inteligência Artificial: Se a mensagem contiver poucas palavras ou for muito vaga (ex: "mais em conta"), 
+                // vamos puxar os substantivos chave do histórico das MENSAGENS ANTERIORES do cliente para anexar a pesquisa.
+                let searchKeywords = combinedText;
+                if (combinedText.split(' ').length <= 4 && historyRecords.length > 2) {
+                    // Pega as últimas 3 interações (incluindo a atual) para criar um contexto denso e amarrado pro Google Sheets procurar
+                    const recentContext = historyRecords.slice(-3).map(r => r.content).join(" ");
+                    searchKeywords = recentContext;
+                }
+
+                if (lastMedia && lastMedia.mimeType.startsWith('image/')) {
+                    await sock.sendPresenceUpdate('composing', jid);
+                    searchKeywords = await aiService.extractImageKeywords(lastMedia, searchKeywords);
+                }
+
+                const stockContext = searchKeywords ? await stockService.searchProduct(searchKeywords) : [];
 
                 // 4. Generate Response & 5. Send Response
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
