@@ -33,9 +33,9 @@ jobs:
           script: |
             cd ~/bot-ferragem
             # Constrói a imagem do Docker com o código novo
-            sudo docker build -t bot-image .
+            docker build -t bot-image .
             # Para e deleta a versão antiga do bot (se existir)
-            sudo docker stop bot-marlene || true
-            sudo docker rm bot-marlene || true
+            docker stop bot-marlene || true
+            docker rm bot-marlene || true
             # Roda a versão nova em segundo plano
-            sudo docker run -d --name bot-marlene bot-image
+            docker run -d --name bot-marlene bot-image
