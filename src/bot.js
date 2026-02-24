@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
@@ -445,7 +445,8 @@ async function initialize() {
             auth: state,
             printQRInTerminal: false,
             logger: pino({ level: 'silent' }), // Suppress detailed terminal logs from baileys
-            browser: ['Ubuntu', 'Chrome', '20.0.04']
+            browser: Browsers.macOS('Desktop'),
+            syncFullHistory: false
         });
 
         setupEvents();
