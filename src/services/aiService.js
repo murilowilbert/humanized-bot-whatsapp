@@ -59,8 +59,16 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
 
             // Injecting current date context
             const now = new Date();
-            const days = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
-            const todayStr = `Hoje é ${days[now.getDay()]}, ${now.toLocaleDateString('pt-BR')} e o horário atual é ${now.toLocaleTimeString('pt-BR')}.`;
+            const tzParams = { timeZone: "America/Sao_Paulo" };
+
+            const weekdayFormatter = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', ...tzParams });
+            const dateFormatter = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', ...tzParams });
+            const timeFormatter = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit', ...tzParams });
+
+            const weekday = weekdayFormatter.format(now);
+            const capitalizedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+
+            const todayStr = `Hoje é ${capitalizedWeekday}, ${dateFormatter.format(now)} e o horário atual é ${timeFormatter.format(now)}.`;
 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
                 "- FOTOS DO CLIENTE: O sistema já leu a imagem e injetou os possíveis produtos no estoque. AJA NATURALMENTE. NUNCA use frases robóticas como 'Com base na foto', 'Analisando a imagem', 'O sistema identificou', etc. Apenas assuma que você viu a foto e vá direto ao ponto (ex: 'Sim, nós temos a Ducha Ducali por...').\n" +

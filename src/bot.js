@@ -27,10 +27,20 @@ const DEBOUNCE_TIME_MS = 5000; // Tempo de espera para o usuário terminar de di
 let sock = null;
 let initialized = false;
 
+function getBrazilDateString() {
+    // Retorna YYYY-MM-DD no fuso horário do Brasil
+    return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
+function getBrazilTime() {
+    // Cria um objeto Date onde getHours(), getDay() etc referem-se ao horário local do Brasil
+    return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+}
+
 function isHoliday() {
     try {
         const holidays = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/holidays.json'))).dates;
-        const today = new Date().toISOString().split('T')[0];
+        const today = getBrazilDateString();
         return holidays.includes(today);
     } catch (e) {
         return false;
@@ -38,7 +48,7 @@ function isHoliday() {
 }
 
 function isOpen() {
-    const now = new Date();
+    const now = getBrazilTime();
     const day = now.getDay();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
