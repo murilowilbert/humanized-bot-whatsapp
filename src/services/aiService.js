@@ -229,22 +229,28 @@ async function extractImageKeywords(mediaData, textContent) {
 /**
  * Amplia os termos de busca com IA para lidar com gírias e sinônimos frouxos
  */
-async function expandSearchQuery(userMessage, recentContext = "") {
+async function expandSearchQuery(userMessage, recentHistory = []) {
     try {
-        const prompt = `Você é um especialista em materiais de construção e ferragens.
-Uma pessoa te perguntou isso: "${userMessage}".
-Aqui está um pouco do contexto recente da conversa (se houver): "${recentContext}".
+        const historyText = recentHistory.map(h => `${h.role === 'user' ? 'Cliente' : 'Bot'}: ${h.content}`).join("\n");
+        const prompt = `Você é um especialista em materiais de construção e ferragens recebendo termos para buscar num banco de dados.
 
-Sua tarefa: Expanda essa busca. Retorne ESTRITAMENTE um array JSON contendo palavras-chave e sinônimos úteis para pesquisar esse item no banco de dados.
-Regras:
-1. Inclua o termo original corrigido (ex: "tornera" -> "torneira").
-2. Inclua sinônimos populares e técnicos (ex: "durepoxi" -> "massa epóxi").
-3. Inclua a categoria ampla se for muito específico (ex: "lorenzetti" -> "chuveiro lorenzetti").
-4. Se pediu "mais barato" ou "em conta", garanta que as palavras centrais da categoria ainda sejam pesquisadas.
-5. RETORNE APENAS O ARRAY JSON, SEM MARCAÇÕES MARKDOWN E SEM JARGÕES EXTRAS.
+Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para gerar ESTRITAMENTE um array JSON com palavras-chave curtas focadas em busca textual.
 
-Exemplo 1: ["fita isolante", "fita adesiva isolante", "fita 3M"]
-Exemplo 2: ["chuveiro", "ducha eletrônica", "banho"]`;
+### REGRAS CRÍTICAS DE CONTEXTO E FUNIL:
+1. CONTEXTO ACUMULATIVO (O FUNIL): A busca não se baseia apenas na última frase. Se o cliente falou de "torneira" antes, e agora disse "parede" ou "elétrica", VOCÊ DEVE manter a palavra primária ("torneira") junto com a novidade ("torneira parede elétrica").
+2. MUDANÇA DE ASSUNTO (RESET): Se o cliente mudou radicalmente para outro objeto (estava em torneira e foi para cimento), abandone o histórico antigo. Foque 100% no assunto novo ("cimento cp2").
+3. PALAVRAS-CHAVE CURTAS: Não transforme perguntas em buscas longas. Extraia a essência. Invés de "quero uma torneira zagonel de pia", retorne ["torneira zagonel pia", "torneira de pia"].
+4. SINÔNIMOS ÚTEIS: Se houver gíria ou erro comum (ex "tornera"), use a grafia correta na busca ("torneira").
+
+### ENTRADAS:
+Mensagem Atual: "${userMessage}"
+Histórico Recente (Opcional):
+${historyText ? historyText : "Nenhum histórico recente."}
+
+RETORNE APENAS O ARRAY JSON. NADA A MAIS.
+Exemplo 1 (Acumulando): ["torneira de parede", "torneira elétrica parede"]
+Exemplo 2 (Mudando Assunto): ["cimento cp2", "cimento votoran"]
+Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
 
         const result = await model.generateContent(prompt);
         let rawResponse = result.response.text().trim();

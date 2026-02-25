@@ -299,10 +299,10 @@ async function setupEvents() {
                 // Inteligência Artificial: Query Expansion
                 // Transforma a intenção em um array rico de sinônimos técnicos
                 let searchKeywords = combinedText;
-                let recentContext = "";
+                let recentHistory = [];
 
-                if (historyRecords.length > 2) {
-                    recentContext = historyRecords.slice(-4).map(r => r.content).join(" ");
+                if (historyRecords.length > 0) {
+                    recentHistory = historyRecords.slice(-6).map(r => ({ role: r.role, content: r.content }));
                 }
 
                 if (lastMedia && lastMedia.mimeType.startsWith('image/')) {
@@ -311,7 +311,7 @@ async function setupEvents() {
                 }
 
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
-                const expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentContext);
+                const expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                 // Passa o array rico de expansões para o Fuse.js/Stock
                 const stockContext = await stockService.searchProduct(expandedQueryArray);
