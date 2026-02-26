@@ -253,9 +253,10 @@ async function verifyProductImageWithCatalog(originalMedia, originalText, candid
         promptText += `Sua missão como 'Oráculo Master': Olhe a foto do cliente e compare com o nosso GABARITO (as fotos de estoque anexadas abaixo). Me diga se o cliente quer:\n`;
         promptText += `A) Comprar exatamente a Máquina/Objeto de um dos Gabaritos.\n`;
         promptText += `B) Comprar uma Peça de Manutenção/Reposição (ou o refil) para a Máquina/Objeto de um dos Gabaritos que está quebrado/velho.\n\n`;
+        promptText += `ATENÇÃO: As fotos do cliente e do gabarito podem ter ângulos ou iluminações muito diferentes (foto de estúdio vs foto caseira). Busque 'alta semelhança de design, formato do espalhador e características físicas'. Seja tolerante, não precisa ser uma cópia pixel por pixel!\n\n`;
         promptText += `Se a resposta for A, me retorne APENAS o CÓDIGO EXATO (os números) do gabarito correspondente. Mais nada.\n`;
         promptText += `Se a resposta for B, me retorne APENAS a string de busca para a peça necessária MAIS a frase inteira do produto gabarito (Ex: 'resistencia chuveiro zagonel optima').\n`;
-        promptText += `Se não tiver NDA a ver (não é nenhum dos gabaritos), retorne a palavra "NENHUM".\n\n`;
+        promptText += `Se definitivamente não tiver NDA a ver (não é nenhum dos gabaritos), retorne a palavra "NENHUM".\n\n`;
         promptText += `--- GABARITOS ---\n`;
 
         // Prepara as partes a enviar para o Gemini (Prompt Text + 1 Foto Cliente + N Fotos Gabarito)

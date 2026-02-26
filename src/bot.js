@@ -388,7 +388,19 @@ async function setupEvents() {
                             stockContext = await stockService.searchProduct([visualConfirm]);
                             finalVisualKeyword = visualConfirm;
                         } else {
-                            console.log(`[Verificação Visual] Nenhuma correspondência exata nos gabaritos.`);
+                            console.log(`[Verificação Visual] Nenhuma correspondência exata nos gabaritos (Oráculo retornou NENHUM). Abortando IA Final.`);
+
+                            // Bug Fix 2: Hardcoded Fallback para evitar alucinação
+                            await sock.sendPresenceUpdate('composing', jid);
+                            const fallbackMsg = "Não consegui identificar com certeza o modelo exato pela foto. Você sabe me dizer o nome da linha ou a marca?";
+                            await sock.sendMessage(jid, { text: fallbackMsg });
+
+                            // Update history for context
+                            await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'bot', content: fallbackMsg } });
+
+                            // Prevent calling the Final LLM by returning early
+                            if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
+                            return;
                         }
                     } else {
                         console.log("[Verificação Visual] Nenhuma foto de gabarito encontrada no HD para os top candidatos.");

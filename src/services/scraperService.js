@@ -128,6 +128,9 @@ async function fetchRealTimeStock(ean) {
             page.click(produtosMenuSelector)
         ]);
 
+        // Fix: Espera forçada para renderização lenta da DOM do APEX
+        await new Promise(r => setTimeout(r, 4000));
+
         // Passo 6: Aguardar barra de pesquisa, digitar EAN e dar Enter
         const searchInputSelector = '#P90_PESQUISAR';
         await page.waitForSelector(searchInputSelector, { timeout: 10000 });
