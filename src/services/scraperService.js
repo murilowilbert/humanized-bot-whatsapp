@@ -101,34 +101,41 @@ async function fetchRealTimeStock(ean) {
             return null;
         }
 
-        // --- INÍCIO DA LÓGICA DE LOGIN (Exemplo Base) ---
-        // await page.goto(snapUrl + '/login', { waitUntil: 'domcontentloaded' });
-        // await page.type('#user', snapUser);
-        // await page.type('#password', snapPass);
-        // await Promise.all([
-        //     page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-        //     page.click('#btn-login')
-        // ]);
+        // Remove any trailing parameters from the login URL if needed or use as is
+        let loginUrl = snapUrl;
 
-        // --- INÍCIO DA LÓGICA DE BUSCA DO PRODUTO (Exemplo Base) ---
-        // await page.goto(`${snapUrl}/produtos/buscar?q=${ean}`, { waitUntil: 'domcontentloaded' });
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
 
-        // const estoqueElement = await page.$('.estoque-valor');
-        // if (estoqueElement) {
-        //     const estoqueText = await page.evaluate(el => el.textContent, estoqueElement);
-        //     console.log(`[Scraper] ✅ Saldo raspado para ${ean}: ${estoqueText}`);
-        //     return parseFloat(estoqueText) || 0;
-        // } else {
-        //     console.log(`[Scraper] Produto ${ean} sem estoque ou não encontrado na tela.`);
-        //     return 0;
-        // }
+        // Identificadores APEX padrão (SnapControl) ou Genéricos
+        const userSelector = '#P200_USERNAME, #user, input[type="text"]';
+        const passSelector = '#P200_PASSWORD, #password, input[type="password"]';
+        const btnSelector = '#B200_LOGIN, #btn-login, button[type="submit"]';
 
-        // Como não temos a URL ou a estrutura HTML real do SnapControl, 
-        // deixamos este Mock temporário que retorna 0 (disparando a feature VIP)
-        // O usuário deverá ajustar o script conforme a DOM do sistema.
-        console.log(`[Scraper - MOCK] Fingindo buscar o estoque ao vivo para EAN: ${ean}...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return 0;
+        await page.waitForSelector(userSelector, { timeout: 5000 });
+        await page.type(userSelector, snapUser);
+        await page.type(passSelector, snapPass);
+
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+            page.click(btnSelector)
+        ]);
+
+        // --- BUSCA DO PRODUTO PÓS-LOGIN ---
+        // Adapte a URL conforme a infraestrutura REST/APEX do SnapControl
+        const searchPath = snapUrl.includes('f?p=') ? snapUrl.replace(/f\?p=200:.*/, `produtos/buscar?q=${ean}`) : `${snapUrl}/produtos/buscar?q=${ean}`;
+        await page.goto(searchPath, { waitUntil: 'domcontentloaded' });
+
+        const estoqueSelector = '.estoque-valor, .saldo-estoque, td.estoque';
+
+        try {
+            await page.waitForSelector(estoqueSelector, { timeout: 3000 });
+            const estoqueText = await page.$eval(estoqueSelector, el => el.textContent);
+            console.log(`[Scraper] ✅ Saldo raspado para ${ean}: ${estoqueText}`);
+            return parseFloat(estoqueText.replace(',', '.')) || 0;
+        } catch (e) {
+            console.log(`[Scraper] Produto ${ean} sem estoque positivo ou não encontrado na tela.`);
+            return 0; // Interpreta falha visual/inexistêcia como Estoque 0 -> feature VIP Redirect
+        }
 
     } catch (error) {
         console.error(`[Scraper] ❌ Erro durante raspagem do EAN ${ean}:`, error);

@@ -217,12 +217,12 @@ async function extractImageKeywords(mediaData, textContent) {
                 {
                     role: 'user',
                     parts: [
-                        { text: `O cliente enviou a seguinte foto no WhatsApp, com a legenda: "${textContent || 'Nenhuma legenda'}". Aja como um "Oráculo de Consertos" de uma ferragem de bairro. Mais do que apenas dizer qual é a máquina ou objeto na foto, TENTE DESCOBRIR O QUE ESTÁ QUEBRADO ou qual A PEÇA DE REPOSIÇÃO que falta. Retorne ESTRITAMENTE os termos de busca para a peça de reposição (marca, modelo, nome da peça) separados por espaço. Exemplo: Se enviar foto de um liquidificador sem hélice, retorne "helice copo liquidificador britania". Não retorne textos explicativos, apenas os termos cirúrgicos para o sistema de busca.` },
+                        { text: `O cliente enviou a seguinte foto no WhatsApp, com a legenda: "${textContent || 'Nenhuma legenda'}". Aja como um assistente de ferragem. Sua tarefa nesta etapa (Pre-Flight) é gerar UMA DESCRIÇÃO NEUTRA E GENÉRICA DAS CARACTERÍSTICAS FÍSICAS do produto na foto (ex: 'chuveiro eletrico branco quadrado de parede', 'torneira de metal cano longo'). \n\nREGRA ABSOLUTA: VOCÊ ESTÁ ESTRITAMENTE PROIBIDO DE TENTAR ADIVINHAR OU INVENTAR MARCAS OU LINHAS COMERCIAIS (ex: NUNCA diga 'Lorenzetti', 'Acqua Storm', 'Tigre' a menos que o texto da marca esteja NITIDAMENTE legível na foto). Se for um pedido de conserto, descreva a peça genérica que falta (ex: 'resistencia chuveiro generica', 'reparo registro de parede'). Retorne apenas os termos de busca separados por espaço (sem explicações).` },
                         { inlineData: { mimeType: mediaData.mimeType, data: mediaData.data } }
                     ]
                 }
             ],
-            systemInstruction: { parts: [{ text: "Você é um classificador visual especialista em Manutenção de Ferramentas, Elétrica e Hidráulica e Ferragens. Adivinhe a peça que o cliente precisa comprar ao observar objetos deteriorados." }] }
+            systemInstruction: { parts: [{ text: "Você é um extrator de características físicas NEUTRAS de materiais de construção. Foque em forma, cor, tipo e uso genérico. PROIBIDO CHUTAR MARCAS OU MODELOS COMERCIAIS." }] }
         });
         const tags = result.response.text().trim();
         console.log(`[AI Vision Pre-Flight] Extraído da imagem: ${tags}`);
