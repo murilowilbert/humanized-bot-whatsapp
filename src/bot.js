@@ -15,8 +15,6 @@ const metricsService = require('./services/metricsService');
 const catalogService = require('./services/catalogService');
 const scraperService = require('./services/scraperService');
 const server = require('./server/app');
-const fs = require('fs');
-const path = require('path');
 
 const interactionTimeouts = new Map();
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
