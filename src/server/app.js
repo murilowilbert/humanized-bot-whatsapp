@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { Server } = require("socket.io");
+const basicAuth = require('express-basic-auth');
 
 const metricsService = require('../services/metricsService');
 const settings = require('../config/settings');
@@ -34,6 +35,21 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, '../public')));
+
+// Feature 6: Dashboard Analítico Protegido
+const dashboardUser = process.env.DASHBOARD_USER || 'admin';
+const dashboardPass = process.env.DASHBOARD_PASS || 'admin123';
+
+const authMiddleware = basicAuth({
+    users: { [dashboardUser]: dashboardPass },
+    challenge: true,
+    realm: 'Admin Dashboard Ferragem Marlene',
+});
+
+// A Rota HTML do Dashboard
+app.get('/admin/dashboard', authMiddleware, (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/dashboard.html'));
+});
 
 // Store IO instance globally to be used by bot.js (via export or event bus)
 // For simplicity, we'll export a function to emit events
@@ -149,6 +165,26 @@ app.post('/api/holidays', (req, res) => {
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: "Erro ao salvar feriados" });
+    }
+});
+
+// Feature 4: Demanda Reprimida API Endpoint
+app.get('/api/ranking', async (req, res) => {
+    try {
+        const { PrismaClient } = require('@prisma/client');
+        const prisma = new PrismaClient();
+
+        const ranking = await prisma.missedDemand.findMany({
+            orderBy: { searchCount: 'desc' },
+            take: 10
+        });
+
+        // Simples proteção CORS extra ou retorno. O CORS wrapper geral ('app.use(cors())') já está ativo.
+        res.json(ranking);
+        await prisma.$disconnect();
+    } catch (e) {
+        console.error("Erro ao buscar ranking de demanda:", e);
+        res.status(500).json({ error: "Erro interno ao buscar ranking" });
     }
 });
 

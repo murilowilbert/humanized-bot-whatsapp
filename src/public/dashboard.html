@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Analítico - Ferragem Marlene</title>
+    <style>
+        :root {
+            --primary: #25D366;
+            --primary-dark: #128C7E;
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-main: #111b21;
+            --text-muted: #667781;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg);
+            color: var(--text-main);
+        }
+
+        header {
+            background-color: var(--primary-dark);
+            color: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        /* Grid de Cards Superiores */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            border-left: 5px solid var(--primary);
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-card.danger {
+            border-left-color: var(--danger);
+        }
+
+        .stat-title {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+
+        /* Seção Principal Inferior */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .panel {
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            padding: 1.5rem;
+        }
+
+        .panel h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Tabela de Ranking */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 1rem;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        tbody tr:hover {
+            background-color: rgba(37, 211, 102, 0.05);
+        }
+
+        .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            background-color: var(--bg);
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        tr:nth-child(1) .rank-badge {
+            background-color: #ffd700;
+            color: #856404;
+        }
+
+        tr:nth-child(2) .rank-badge {
+            background-color: #e0e0e0;
+            color: #383d41;
+        }
+
+        tr:nth-child(3) .rank-badge {
+            background-color: #cd7f32;
+            color: #4e3629;
+        }
+
+        .date-muted {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Responsividade */
+        @media (max-width: 900px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Painel de Inteligência - Ferragem Marlene</h1>
+        <div style="font-size: 0.9rem; opacity: 0.9;">Atualização Automática</div>
+    </header>
+
+    <div class="container">
+
+        <!-- Cards de Resumo -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-title">Mensagens Lidas pela IA</div>
+                <div class="stat-value" id="val-msgs">carregando...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Média de Satisfação IA</div>
+                <div class="stat-value" id="val-rating">carregando...</div>
+            </div>
+            <div class="stat-card danger">
+                <div class="stat-title">Transferências p/ Humano (Handoff)</div>
+                <div class="stat-value" id="val-handoffs">carregando...</div>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <!-- Ranking de Oportunidades (Feature 4) -->
+            <div class="panel">
+                <h2>🏆 Top 10 Produtos em Falta (Demanda Reprimida)</h2>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th width="10%">Rank</th>
+                                <th>Produto Procurado (Sem Estoque)</th>
+                                <th>Tentativas de Compra</th>
+                                <th>Última Busca</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ranking-body">
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: #888;">Carregando dados
+                                    estruturados...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Side Panel -->
+            <div class="panel">
+                <h2>Informações do Sistema</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">
+                    ✓ O bot converte automaticamente produtos faltantes em convites VIP.<br><br>
+                    ✓ Este ranking é gerado ao intercetar a tag <code>[ACTION: VIP_GROUP]</code> da Inteligência
+                    Artificial.<br><br>
+                    ✓ Aumente o estoque do TOP 1 do ranking para recuperar faturamento rápido.
+                </p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Função para formatar data (Ex: 26/02 às 14:30)
+        function formatDate(isoString) {
+            if (!isoString) return "-";
+            const d = new Date(isoString);
+            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} às ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        }
+
+        async function loadDashboard() {
+            try {
+                // 1. Carregar Métricas Gerais Antigas
+                const resMetrics = await fetch('/api/metrics');
+                const metrics = await resMetrics.json();
+
+                document.getElementById('val-msgs').textContent = metrics.messages_processed || 0;
+                document.getElementById('val-handoffs').textContent = metrics.handoffs || 0;
+
+                if (metrics.ratings && metrics.ratings.length > 0) {
+                    const avg = metrics.ratings.reduce((acc, curr) => acc + curr.score, 0) / metrics.ratings.length;
+                    document.getElementById('val-rating').textContent = avg.toFixed(1) + ' ⭐';
+                } else {
+                    document.getElementById('val-rating').textContent = 'N/A';
+                }
+
+                // 2. Carregar o Ranking da Feature 4 (SQLite Prisma)
+                const resRanking = await fetch('/api/ranking');
+                const rankingData = await resRanking.json();
+
+                const tbody = document.getElementById('ranking-body');
+                tbody.innerHTML = '';
+
+                if (rankingData.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem;">Nenhuma falta de estoque detectada pela IA ainda. 🎉</td></tr>';
+                    return;
+                }
+
+                rankingData.forEach((item, index) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><span class="rank-badge">${index + 1}</span></td>
+                        <td style="font-weight: 500; text-transform: capitalize;">${item.productName}</td>
+                        <td style="font-weight: bold; color: var(--danger);"><span style="background: #fee2e2; padding: 2px 8px; border-radius: 10px; font-size: 0.85rem;">🔥 ${item.searchCount}x</span></td>
+                        <td class="date-muted">${formatDate(item.lastRequestedAt)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+            } catch (error) {
+                console.error("Erro ao carregar Dashboard:", error);
+                document.getElementById('ranking-body').innerHTML = '<tr><td colspan="4" style="text-align: center; color: red;">⏳ Falha de comunicação com o servidor SQLite.</td></tr>';
+            }
+        }
+
+        // Auto Load e Refresh a cada 1 minuto
+        window.addEventListener('DOMContentLoaded', loadDashboard);
+        setInterval(loadDashboard, 60000);
+    </script>
+</body>
+
+</html>

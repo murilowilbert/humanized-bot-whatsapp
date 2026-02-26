@@ -217,12 +217,12 @@ async function extractImageKeywords(mediaData, textContent) {
                 {
                     role: 'user',
                     parts: [
-                        { text: `O cliente enviou a seguinte foto no WhatsApp, com a legenda: "${textContent || 'Nenhuma legenda'}". Analise a imagem e me retorne EXATAMENTE os termos chaves (nome do produto, marca, modelo, voltagem se tiver) para eu pesquisar no meu banco de dados de estoque. Seja cirúrgico. Retorne apenas uma string simples com as palavras separadas por espaço. Exemplo: 'ducha ducali zagonel' ou 'torneira prima'.` },
+                        { text: `O cliente enviou a seguinte foto no WhatsApp, com a legenda: "${textContent || 'Nenhuma legenda'}". Aja como um "Oráculo de Consertos" de uma ferragem de bairro. Mais do que apenas dizer qual é a máquina ou objeto na foto, TENTE DESCOBRIR O QUE ESTÁ QUEBRADO ou qual A PEÇA DE REPOSIÇÃO que falta. Retorne ESTRITAMENTE os termos de busca para a peça de reposição (marca, modelo, nome da peça) separados por espaço. Exemplo: Se enviar foto de um liquidificador sem hélice, retorne "helice copo liquidificador britania". Não retorne textos explicativos, apenas os termos cirúrgicos para o sistema de busca.` },
                         { inlineData: { mimeType: mediaData.mimeType, data: mediaData.data } }
                     ]
                 }
             ],
-            systemInstruction: { parts: [{ text: "Você é um classificador de imagens focado em descobrir nomes de materiais de construção, ferramentas, elétrica e hidráulica. Extraia o texto contido nas caixas e produtos." }] }
+            systemInstruction: { parts: [{ text: "Você é um classificador visual especialista em Manutenção de Ferramentas, Elétrica e Hidráulica e Ferragens. Adivinhe a peça que o cliente precisa comprar ao observar objetos deteriorados." }] }
         });
         const tags = result.response.text().trim();
         console.log(`[AI Vision Pre-Flight] Extraído da imagem: ${tags}`);
@@ -231,6 +231,64 @@ async function extractImageKeywords(mediaData, textContent) {
     } catch (e) {
         console.error("Erro no vision pre-flight:", e);
         return textContent; // Fallback
+    }
+}
+
+/**
+ * Feature 8: Oráculo Master (Confirmação Visual com Gabarito)
+ * Envia a foto do zap + fotos do DB local pro Gemini dar a cartada final.
+ * 
+ * @param {Object} originalMedia { mimeType, data (base64) } da foto enviada pelo usuário
+ * @param {string} originalText A legenda que o usuário mandou (ex: "Tem essa?")
+ * @param {Array<Object>} candidates Array de objetos. Cada objeto tem { code, name, localImageBase64 }
+ * @returns {Promise<string|null>} Retorna o "code" do produto matador. Ou null se nenhum bater.
+ */
+async function verifyProductImageWithCatalog(originalMedia, originalText, candidates) {
+    if (!originalMedia || !candidates || candidates.length === 0) return null;
+
+    try {
+        // Monta o prompt
+        let promptText = `O cliente enviou a primeira foto para o WhatsApp da nossa ferragem perguntando: "${originalText}".\n\n`;
+        promptText += `Eu, como sistema do estoque, consegui resgatar ${candidates.length} fotos dos produtos que mais se assemelham ao que ele pediu, lendo nossa prateleira.\n\n`;
+        promptText += `Sua missão como 'Oráculo Master': Olhe a foto do cliente e compare com o nosso GABARITO (as fotos de estoque anexadas abaixo). Me diga se o cliente quer:\n`;
+        promptText += `A) Comprar exatamente a Máquina/Objeto de um dos Gabaritos.\n`;
+        promptText += `B) Comprar uma Peça de Manutenção/Reposição (ou o refil) para a Máquina/Objeto de um dos Gabaritos que está quebrado/velho.\n\n`;
+        promptText += `Se a resposta for A, me retorne APENAS o CÓDIGO EXATO (os números) do gabarito correspondente. Mais nada.\n`;
+        promptText += `Se a resposta for B, me retorne APENAS a string de busca para a peça necessária MAIS a frase inteira do produto gabarito (Ex: 'resistencia chuveiro zagonel optima').\n`;
+        promptText += `Se não tiver NDA a ver (não é nenhum dos gabaritos), retorne a palavra "NENHUM".\n\n`;
+        promptText += `--- GABARITOS ---\n`;
+
+        // Prepara as partes a enviar para o Gemini (Prompt Text + 1 Foto Cliente + N Fotos Gabarito)
+        const parts = [];
+
+        parts.push({ text: promptText });
+
+        // Foto Original do Cliente
+        parts.push({ text: "[FOTO DO CLIENTE]:" });
+        parts.push({ inlineData: { mimeType: originalMedia.mimeType, data: originalMedia.data } });
+
+        // Fotos do Catálogo
+        candidates.forEach((cand, index) => {
+            parts.push({ text: `\n[GABARITO ${index + 1}] Código numérico: ${cand.code} | Nome: ${cand.name}` });
+            parts.push({ inlineData: { mimeType: 'image/jpeg', data: cand.localImageBase64 } });
+        });
+
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: parts }],
+            systemInstruction: { parts: [{ text: "Você é um auditor de estoque 100% focado e cirúrgico. Nunca escreva frases longas ou introduções." }] }
+        });
+
+        const answer = result.response.text().trim();
+        console.log(`[AI Visual Audit] Resposta do Oráculo: ${answer}`);
+
+        if (answer.toUpperCase() === "NENHUM" || answer.length > 100) {
+            return null; // Falhou na auditoria visual ou se perdeu
+        }
+
+        return answer; // Vai ser o Código (Ex: "1234") ou o termo de busca estendido (Ex: "resistencia chuveiro...")
+    } catch (e) {
+        console.error("Erro na Auditoria Visual com Catálogo:", e);
+        return null;
     }
 }
 
@@ -286,5 +344,6 @@ module.exports = {
     generateResponse,
     transcribeAudio,
     extractImageKeywords,
+    verifyProductImageWithCatalog,
     expandSearchQuery
 };

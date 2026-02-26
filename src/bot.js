@@ -13,7 +13,10 @@ const stockService = require('./services/stockService');
 const aiService = require('./services/aiService');
 const metricsService = require('./services/metricsService');
 const catalogService = require('./services/catalogService');
+const scraperService = require('./services/scraperService');
 const server = require('./server/app');
+const fs = require('fs');
+const path = require('path');
 
 const interactionTimeouts = new Map();
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
@@ -22,6 +25,7 @@ const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 const userMessageQueues = new Map();
 const userProcessingTimers = new Map();
 const userIsProcessing = new Map(); // Trava de concorrência
+const userPausedStates = new Map(); // Controle de Handoff/Pausa
 const DEBOUNCE_TIME_MS = 5000; // Tempo de espera para o usuário terminar de digitar
 
 let sock = null;
@@ -86,7 +90,6 @@ async function sendHumanLikeResponse(jid, text) {
 
         if (codMatch) {
             const cod = codMatch[1];
-            part = part.replace(codMatch[0], '').trim();
 
             const pathsToCheck = [
                 path.join(__dirname, `../data/fotos/${cod}.jpg`),
@@ -98,6 +101,10 @@ async function sendHumanLikeResponse(jid, text) {
             ];
             fileToSend = pathsToCheck.find(p => fs.existsSync(p));
         }
+
+        // Limpeza Incondicional da Tag
+        const regexCod = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
+        part = part.replace(regexCod, '').trim();
 
         try {
             if (fileToSend) {
@@ -178,6 +185,19 @@ async function setupEvents() {
             msg.message.extendedTextMessage?.text ||
             msg.message.imageMessage?.caption ||
             '';
+
+        // Middleware de Pausa (Handoff)
+        const todayDate = getBrazilDateString();
+        if (userPausedStates.has(jid)) {
+            const pausedDate = userPausedStates.get(jid);
+            // Reset da pausa no dia seguinte
+            if (pausedDate !== todayDate) {
+                userPausedStates.delete(jid);
+            } else {
+                console.log(`[Handoff Mute] Ignorando mensagem de ${pushname} (${headers})`);
+                return; // Ignora completamente para o humano assumir
+            }
+        }
 
         console.log(`Recebido de ${pushname} (${headers}): ${textContent} (Aguardando debounce...)`);
         metricsService.incrementMessages();
@@ -324,7 +344,81 @@ async function setupEvents() {
                 const expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                 // Passa o array rico de expansões para o Fuse.js/Stock
-                const stockContext = await stockService.searchProduct(expandedQueryArray);
+                let stockContext = await stockService.searchProduct(expandedQueryArray);
+                let finalVisualKeyword = null;
+
+                // Feature 8: Visual Verification com Gabarito (Oracle Master)
+                if (lastMedia && lastMedia.mimeType.startsWith('image/') && stockContext && stockContext.length > 0) {
+                    console.log("[Verificação Visual] Buscando gabaritos no HD...");
+                    const candidatesLocal = [];
+                    const itemsToCheck = stockContext.slice(0, 3);
+
+                    for (const cand of itemsToCheck) {
+                        const productData = cand.item || cand;
+                        const code = productData['código'] || productData['codigo'] || productData.Codigo;
+                        const name = productData['modelo/produto'] || productData.Produto;
+
+                        if (code && name) {
+                            // Tenta carregar a imagem do disco
+                            const imagePathJpg = path.join(__dirname, `../data/fotos_sheets/${code}.jpg`);
+                            const imagePathPng = path.join(__dirname, `../data/fotos_sheets/${code}.png`);
+
+                            let localImagePath = null;
+                            if (fs.existsSync(imagePathJpg)) localImagePath = imagePathJpg;
+                            else if (fs.existsSync(imagePathPng)) localImagePath = imagePathPng;
+
+                            if (localImagePath) {
+                                const fileBuffer = fs.readFileSync(localImagePath);
+                                candidatesLocal.push({
+                                    code: code.toString(),
+                                    name: name.toString(),
+                                    localImageBase64: fileBuffer.toString('base64')
+                                });
+                            }
+                        }
+                    }
+
+                    if (candidatesLocal.length > 0) {
+                        await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
+                        console.log(`[Verificação Visual] Oráculo acionado com ${candidatesLocal.length} gabaritos disponíveis.`);
+                        const visualConfirm = await aiService.verifyProductImageWithCatalog(lastMedia, combinedText, candidatesLocal);
+
+                        if (visualConfirm) {
+                            // O Oráculo aprovou um dos códigos exatos ou uma peça específica!
+                            // Refaz a busca focada nessa string/código matador
+                            console.log(`[Verificação Visual] Sucesso! Nova Query Focada: "${visualConfirm}"`);
+                            stockContext = await stockService.searchProduct([visualConfirm]);
+                            finalVisualKeyword = visualConfirm;
+                        } else {
+                            console.log(`[Verificação Visual] Nenhuma correspondência exata nos gabaritos.`);
+                        }
+                    } else {
+                        console.log("[Verificação Visual] Nenhuma foto de gabarito encontrada no HD para os top candidatos.");
+                    }
+                }
+
+                // Feature 2 & 3: Scraping ao vivo (Lazy Execution) post-debounce
+                // Raspa os primeiros N resultados (ex: Top 3) para garantir validação de estoque 
+                if (stockContext && stockContext.length > 0) {
+                    const itemsToScrape = stockContext.slice(0, 3);
+                    for (const result of itemsToScrape) {
+                        const productData = result.item || result;
+                        const ean = productData['código'] || productData['codigo'] || productData.Codigo;
+
+                        if (!ean) continue;
+
+                        const liveStock = await scraperService.fetchRealTimeStock(ean);
+                        if (liveStock !== null) {
+                            if (result.item) {
+                                // Planilha Dinâmica do Google (Geralmente minúsculo)
+                                result.item['estoque'] = liveStock === 0 ? "0 (ESGOTADO)" : liveStock;
+                            } else {
+                                // DB Estático XLSX
+                                result.Estoque = liveStock === 0 ? "0 (ESGOTADO)" : liveStock;
+                            }
+                        }
+                    }
+                }
 
                 // 4. Generate Response & 5. Send Response
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
@@ -336,7 +430,11 @@ async function setupEvents() {
                     }
                 };
 
-                const response = await aiService.generateResponse(combinedText.trim(), lastMedia, chatsHistory, stockContext, onWait);
+                // Override searchKeywords se o Oráculo Matador visual identificou
+                const finalPromptInput = finalVisualKeyword || combinedText.trim();
+                console.log(`[Gerando Resposta] Intent Final: ${finalPromptInput} | Itens no Contexto: ${stockContext ? stockContext.length : 0}`);
+
+                const response = await aiService.generateResponse(finalPromptInput, lastMedia, chatsHistory, stockContext, onWait);
 
                 // INTERCEPÇÃO PÓS-PROCESSAMENTO:
                 // Se o cliente mandou mais alguma coisa ENQUANTO o bot estava pensando,
@@ -372,6 +470,38 @@ async function setupEvents() {
                     fullText = fullText.replace(locationMatch[0], '').trim();
                 }
 
+                // Feature 1: Check for VIP Group Action
+                const vipMatch = fullText.match(/\[ACTION:\s*VIP_GROUP\]/i);
+                if (vipMatch) {
+                    fullText = fullText.replace(vipMatch[0], '').trim();
+                    // Append the CTA directly to the text so sendHumanLikeResponse breaks it into bubbles
+                    fullText += "\n\nMas faz o seguinte: entra no nosso Grupo do WhatsApp. Lá a gente avisa em primeira mão tudo que chega na loja 👇\n\nhttps://chat.whatsapp.com/DkgAIvvM3NN9Y1zrEkZBGQ";
+
+                    // Feature 4: Salvar Demanda Reprimida no Banco (SQLite)
+                    // Usamos a última intenção extraída pelo Fuse/IA como o nome do produto
+                    const intendedProduct = expandedQueryArray.length > 0 ? expandedQueryArray[0] : combinedText.trim();
+                    if (intendedProduct.length > 2) {
+                        try {
+                            // Limite string para evitar sujeira muito grande no banco
+                            const safeProductName = intendedProduct.substring(0, 100).toLowerCase();
+                            await prisma.missedDemand.upsert({
+                                where: { productName: safeProductName },
+                                update: {
+                                    searchCount: { increment: 1 },
+                                    lastRequestedAt: new Date()
+                                },
+                                create: {
+                                    productName: safeProductName,
+                                    searchCount: 1
+                                }
+                            });
+                            console.log(`[API Feature 4] Demanda registrada para: "${safeProductName}"`);
+                        } catch (err) {
+                            console.error("[API Feature 4] Erro ao salvar MissedDemand:", err);
+                        }
+                    }
+                }
+
                 // DB History: Salvar resposta da IA
                 await prisma.chatHistory.create({
                     data: { phoneNumber: headers, role: 'model', content: fullText }
@@ -398,8 +528,14 @@ async function setupEvents() {
 
                 // B) Human Handoff
                 if (response.needsHandoff) {
-                    await sock.sendMessage(jid, { text: settings.messages.human_handoff });
+                    if (isOpen()) {
+                        await sock.sendMessage(jid, { text: "Vou repassar para um atendente responder certinho para você, só um segundo." });
+                    } else {
+                        await sock.sendMessage(jid, { text: "Deixei sua dúvida anotada! Como nossa loja já fechou hoje, um atendente humano vai te responder assim que abrirmos amanhã às 08h." });
+                    }
+                    userPausedStates.set(jid, getBrazilDateString());
                     metricsService.incrementHandoff();
+                    return; // Encerra o fluxo aqui para não pedir avaliação nem iniciar timer de inatividade
                 }
 
                 // C) Rating
