@@ -297,7 +297,10 @@ async function verifyProductImageWithCatalog(originalMedia, originalText, candid
  */
 async function expandSearchQuery(userMessage, recentHistory = []) {
     try {
-        const historyText = recentHistory.map(h => `${h.role === 'user' ? 'Cliente' : 'Bot'}: ${h.content}`).join("\n");
+        // Bug Fix: Remove control characters (\r, \n) to prevent JSON parse errors
+        const sanitizedMessage = userMessage ? userMessage.replace(/[\r\n]+/g, ' ').trim() : '';
+        const historyText = recentHistory.map(h => `${h.role === 'user' ? 'Cliente' : 'Bot'}: ${h.content ? h.content.replace(/[\r\n]+/g, ' ') : ''}`).join("\n");
+
         const prompt = `Você é um especialista em materiais de construção e ferragens recebendo termos para buscar num banco de dados.
 
 Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para gerar ESTRITAMENTE um array JSON com palavras-chave curtas focadas em busca textual.
@@ -309,7 +312,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 4. SINÔNIMOS ÚTEIS: Se houver gíria ou erro comum (ex "tornera"), use a grafia correta na busca ("torneira").
 
 ### ENTRADAS:
-Mensagem Atual: "${userMessage}"
+Mensagem Atual: "${sanitizedMessage}"
 Histórico Recente (Opcional):
 ${historyText ? historyText : "Nenhum histórico recente."}
 

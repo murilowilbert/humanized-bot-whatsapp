@@ -68,14 +68,20 @@ async function getCachedSheetData() {
         return sheetCache;
     }
 
-    const csvUrl = process.env.GOOGLE_SHEET_CSV_URL;
-    if (!csvUrl) return null;
+    const csvUrl = process.env.GOOGLE_SHEETS_CSV_URL || process.env.GOOGLE_SHEET_CSV_URL;
+    if (!csvUrl) {
+        console.error("🚨 [ERRO CRÍTICO] Falha no Carregamento: Variável GOOGLE_SHEETS_CSV_URL não encontrada no .env ou Servidor. O Bot operará cego (0 itens)!");
+        return null;
+    }
 
     console.log("[Google Sheets] Baixando planilha e atualizando Cache em Memória...");
     const data = await fetchGoogleSheetCSV(csvUrl);
     if (data) {
         sheetCache = data;
         lastCacheTime = now;
+        console.log(`[Google Sheets] ✅ Cache Atualizado com Sucesso: ${data.length} itens.`);
+    } else {
+        console.error("🚨 [ERRO CRÍTICO] A conexão com a URL do Google Sheets falhou ou o CSV retornou vazio!");
     }
     return sheetCache;
 }
