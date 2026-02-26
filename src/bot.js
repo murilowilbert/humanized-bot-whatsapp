@@ -355,7 +355,7 @@ async function setupEvents() {
                     if (lastMedia && lastMedia.mimeType.startsWith('image/') && stockContext && stockContext.length > 0) {
                         console.log("[Verificação Visual] Buscando gabaritos no HD...");
                         const candidatesLocal = [];
-                        const itemsToCheck = stockContext.slice(0, 3);
+                        const itemsToCheck = stockContext.slice(0, 5);
 
                         for (const cand of itemsToCheck) {
                             const productData = cand.item || cand;
@@ -383,6 +383,10 @@ async function setupEvents() {
                         }
 
                         if (candidatesLocal.length > 0) {
+                            // Dedo-duro do Oracle para acompanhamento de log/avaliação
+                            const nomesGabaritos = candidatesLocal.map((c, i) => `${i + 1}. ${c.name}`).join(", ");
+                            console.log(`[Verificação Visual] Avaliando gabaritos: ${nomesGabaritos}`);
+
                             await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
                             console.log(`[Verificação Visual] Oráculo acionado com ${candidatesLocal.length} gabaritos disponíveis.`);
                             const visualConfirm = await aiService.verifyProductImageWithCatalog(lastMedia, combinedText, candidatesLocal);
