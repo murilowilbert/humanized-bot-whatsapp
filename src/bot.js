@@ -13,7 +13,6 @@ const stockService = require('./services/stockService');
 const aiService = require('./services/aiService');
 const metricsService = require('./services/metricsService');
 const catalogService = require('./services/catalogService');
-const scraperService = require('./services/scraperService');
 const server = require('./server/app');
 
 const interactionTimeouts = new Map();
@@ -339,95 +338,82 @@ async function setupEvents() {
                 }
 
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
-                const expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
-                // Passa o array rico de expansões para o Fuse.js/Stock
-                let stockContext = await stockService.searchProduct(expandedQueryArray);
+                // Pivot 2: Roteamento de Intenção
+                const intent = await aiService.classifyIntent(searchKeywords);
+
+                let stockContext = [];
                 let finalVisualKeyword = null;
 
-                // Feature 8: Visual Verification com Gabarito (Oracle Master)
-                if (lastMedia && lastMedia.mimeType.startsWith('image/') && stockContext && stockContext.length > 0) {
-                    console.log("[Verificação Visual] Buscando gabaritos no HD...");
-                    const candidatesLocal = [];
-                    const itemsToCheck = stockContext.slice(0, 3);
+                if (intent === 'SEARCH') {
+                    const expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
-                    for (const cand of itemsToCheck) {
-                        const productData = cand.item || cand;
-                        const code = productData['código'] || productData['codigo'] || productData.Codigo;
-                        const name = productData['modelo/produto'] || productData.Produto;
+                    // Passa o array rico de expansões para o Fuse.js/Stock
+                    stockContext = await stockService.searchProduct(expandedQueryArray);
 
-                        if (code && name) {
-                            // Tenta carregar a imagem do disco
-                            const imagePathJpg = path.join(__dirname, `../data/fotos_sheets/${code}.jpg`);
-                            const imagePathPng = path.join(__dirname, `../data/fotos_sheets/${code}.png`);
+                    // Feature 8: Visual Verification com Gabarito (Oracle Master)
+                    if (lastMedia && lastMedia.mimeType.startsWith('image/') && stockContext && stockContext.length > 0) {
+                        console.log("[Verificação Visual] Buscando gabaritos no HD...");
+                        const candidatesLocal = [];
+                        const itemsToCheck = stockContext.slice(0, 3);
 
-                            let localImagePath = null;
-                            if (fs.existsSync(imagePathJpg)) localImagePath = imagePathJpg;
-                            else if (fs.existsSync(imagePathPng)) localImagePath = imagePathPng;
+                        for (const cand of itemsToCheck) {
+                            const productData = cand.item || cand;
+                            const code = productData['código'] || productData['codigo'] || productData.Codigo;
+                            const name = productData['modelo/produto'] || productData.Produto;
 
-                            if (localImagePath) {
-                                const fileBuffer = fs.readFileSync(localImagePath);
-                                candidatesLocal.push({
-                                    code: code.toString(),
-                                    name: name.toString(),
-                                    localImageBase64: fileBuffer.toString('base64')
-                                });
+                            if (code && name) {
+                                // Tenta carregar a imagem do disco
+                                const imagePathJpg = path.join(__dirname, `../data/fotos_sheets/${code}.jpg`);
+                                const imagePathPng = path.join(__dirname, `../data/fotos_sheets/${code}.png`);
+
+                                let localImagePath = null;
+                                if (fs.existsSync(imagePathJpg)) localImagePath = imagePathJpg;
+                                else if (fs.existsSync(imagePathPng)) localImagePath = imagePathPng;
+
+                                if (localImagePath) {
+                                    const fileBuffer = fs.readFileSync(localImagePath);
+                                    candidatesLocal.push({
+                                        code: code.toString(),
+                                        name: name.toString(),
+                                        localImageBase64: fileBuffer.toString('base64')
+                                    });
+                                }
                             }
                         }
-                    }
 
-                    if (candidatesLocal.length > 0) {
-                        await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
-                        console.log(`[Verificação Visual] Oráculo acionado com ${candidatesLocal.length} gabaritos disponíveis.`);
-                        const visualConfirm = await aiService.verifyProductImageWithCatalog(lastMedia, combinedText, candidatesLocal);
+                        if (candidatesLocal.length > 0) {
+                            await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
+                            console.log(`[Verificação Visual] Oráculo acionado com ${candidatesLocal.length} gabaritos disponíveis.`);
+                            const visualConfirm = await aiService.verifyProductImageWithCatalog(lastMedia, combinedText, candidatesLocal);
 
-                        if (visualConfirm) {
-                            // O Oráculo aprovou um dos códigos exatos ou uma peça específica!
-                            // Refaz a busca focada nessa string/código matador
-                            console.log(`[Verificação Visual] Sucesso! Nova Query Focada: "${visualConfirm}"`);
-                            stockContext = await stockService.searchProduct([visualConfirm]);
-                            finalVisualKeyword = visualConfirm;
-                        } else {
-                            console.log(`[Verificação Visual] Nenhuma correspondência exata nos gabaritos (Oráculo retornou NENHUM). Abortando IA Final.`);
-
-                            // Bug Fix 2: Hardcoded Fallback para evitar alucinação
-                            await sock.sendPresenceUpdate('composing', jid);
-                            const fallbackMsg = "Não consegui identificar com certeza o modelo exato pela foto. Você sabe me dizer o nome da linha ou a marca?";
-                            await sock.sendMessage(jid, { text: fallbackMsg });
-
-                            // Update history for context
-                            await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'bot', content: fallbackMsg } });
-
-                            // Prevent calling the Final LLM by returning early
-                            if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
-                            return;
-                        }
-                    } else {
-                        console.log("[Verificação Visual] Nenhuma foto de gabarito encontrada no HD para os top candidatos.");
-                    }
-                }
-
-                // Feature 2 & 3: Scraping ao vivo (Lazy Execution) post-debounce
-                // Raspa os primeiros N resultados (ex: Top 3) para garantir validação de estoque 
-                if (stockContext && stockContext.length > 0) {
-                    const itemsToScrape = stockContext.slice(0, 3);
-                    for (const result of itemsToScrape) {
-                        const productData = result.item || result;
-                        const ean = productData['código'] || productData['codigo'] || productData.Codigo;
-
-                        if (!ean) continue;
-
-                        const liveStock = await scraperService.fetchRealTimeStock(ean);
-                        if (liveStock !== null) {
-                            if (result.item) {
-                                // Planilha Dinâmica do Google (Geralmente minúsculo)
-                                result.item['estoque'] = liveStock === 0 ? "0 (ESGOTADO)" : liveStock;
+                            if (visualConfirm) {
+                                // O Oráculo aprovou um dos códigos exatos ou uma peça específica!
+                                // Refaz a busca focada nessa string/código matador
+                                console.log(`[Verificação Visual] Sucesso! Nova Query Focada: "${visualConfirm}"`);
+                                stockContext = await stockService.searchProduct([visualConfirm]);
+                                finalVisualKeyword = visualConfirm;
                             } else {
-                                // DB Estático XLSX
-                                result.Estoque = liveStock === 0 ? "0 (ESGOTADO)" : liveStock;
+                                console.log(`[Verificação Visual] Nenhuma correspondência exata nos gabaritos (Oráculo retornou NENHUM). Abortando IA Final.`);
+
+                                // Bug Fix 2: Hardcoded Fallback para evitar alucinação
+                                await sock.sendPresenceUpdate('composing', jid);
+                                const fallbackMsg = "Não consegui identificar com certeza o modelo exato pela foto. Você sabe me dizer o nome da linha ou a marca?";
+                                await sock.sendMessage(jid, { text: fallbackMsg });
+
+                                // Update history for context
+                                await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'bot', content: fallbackMsg } });
+
+                                // Prevent calling the Final LLM by returning early
+                                if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
+                                return;
                             }
+                        } else {
+                            console.log("[Verificação Visual] Nenhuma foto de gabarito encontrada no HD para os top candidatos.");
                         }
                     }
+                } else if (intent === 'FAQ') {
+                    console.log(`[Intent Router] Intenção de 'FAQ' detectada. Ignorando consulta de db/estoque.`);
                 }
 
                 // 4. Generate Response & 5. Send Response

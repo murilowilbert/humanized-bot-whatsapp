@@ -253,7 +253,7 @@ async function verifyProductImageWithCatalog(originalMedia, originalText, candid
         promptText += `Sua missão como 'Oráculo Master': Olhe a foto do cliente e compare com o nosso GABARITO (as fotos de estoque anexadas abaixo). Me diga se o cliente quer:\n`;
         promptText += `A) Comprar exatamente a Máquina/Objeto de um dos Gabaritos.\n`;
         promptText += `B) Comprar uma Peça de Manutenção/Reposição (ou o refil) para a Máquina/Objeto de um dos Gabaritos que está quebrado/velho.\n\n`;
-        promptText += `ATENÇÃO: As fotos do cliente e do gabarito podem ter ângulos ou iluminações muito diferentes (foto de estúdio vs foto caseira). Busque 'alta semelhança de design, formato do espalhador e características físicas'. Seja tolerante, não precisa ser uma cópia pixel por pixel!\n\n`;
+        promptText += `AÇÃO EXTREMAMENTE TOLERANTE: Você está comparando fotos profissionais de estúdio com fotos amadoras. Ignore fundos poluídos, iluminação ruim, sujeira, reflexos ou ângulos distorcidos. Se o formato geral, o design da peça ou qualquer texto impresso (como marca/modelo) indicar que é o mesmo produto, retorne correspondência positiva! Não procure por cópias perfeitas.\n\n`;
         promptText += `Se a resposta for A, me retorne APENAS o CÓDIGO EXATO (os números) do gabarito correspondente. Mais nada.\n`;
         promptText += `Se a resposta for B, me retorne APENAS a string de busca para a peça necessária MAIS a frase inteira do produto gabarito (Ex: 'resistencia chuveiro zagonel optima').\n`;
         promptText += `Se definitivamente não tiver NDA a ver (não é nenhum dos gabaritos), retorne a palavra "NENHUM".\n\n`;
@@ -344,10 +344,41 @@ Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
     }
 }
 
+/**
+ * Classifica a intenção primária do usuário para evitar buscas desnecessárias na planilha
+ */
+async function classifyIntent(userMessage) {
+    if (!userMessage || userMessage.trim() === '') return 'FAQ';
+
+    try {
+        const prompt = `Classifique a seguinte mensagem do cliente em uma das duas categorias:
+1. "STORE_FAQ": Perguntas gerais da loja (horário de funcionamento, endereço, localização física, se tem tele-entrega, formas de pagamento) ou saudações muito básicas desvinculadas de produtos ("bom dia", "olá", "tudo bem").
+2. "PRODUCT_SEARCH": Qualquer tentativa de encontrar, comprar, perguntar o preço ou saber informações sobre produtos mecânicos, elétricos, hidráulicos, tintas ou consertos ("tem chuveiro?", "qual o preço da torneira?", "cimento", "cano pvc").
+
+Mensagem: "${userMessage}"
+
+Retorne APENAS a string "STORE_FAQ" ou "PRODUCT_SEARCH".`;
+
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            systemInstruction: { parts: [{ text: "Classificador de intenções estrito. Responda apenas com a tag solicitada." }] }
+        });
+
+        const intent = result.response.text().trim().toUpperCase();
+        console.log(`[Intent Router] Classificação da Mensagem "${userMessage}": ${intent}`);
+
+        return intent.includes('STORE_FAQ') ? 'FAQ' : 'SEARCH';
+    } catch (e) {
+        console.error("Erro na classificação de intenção:", e);
+        return 'SEARCH'; // Default fallback = pesquisar produto
+    }
+}
+
 module.exports = {
     generateResponse,
     transcribeAudio,
     extractImageKeywords,
     verifyProductImageWithCatalog,
-    expandSearchQuery
+    expandSearchQuery,
+    classifyIntent
 };
