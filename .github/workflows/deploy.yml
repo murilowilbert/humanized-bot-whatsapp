@@ -40,5 +40,13 @@ jobs:
             docker rm bot-marlene || true
             # Certifica de que o arquivo SQlite exista antes no servidor pra poder montar
             touch ~/bot-ferragem/dev.db
-            # Roda a versão nova em segundo plano
-            docker run -d -p 3000:3000 -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys -v ~/bot-ferragem/dev.db:/app/dev.db --name bot-marlene bot-image
+            # Criar arquivo .env dinamicamente com os secrets
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > ~/bot-ferragem/.env
+            echo "WHATSAPP_PHONE_NUMBER=${{ secrets.WHATSAPP_PHONE_NUMBER }}" >> ~/bot-ferragem/.env
+            echo "SNAPCONTROL_URL=${{ secrets.SNAPCONTROL_URL }}" >> ~/bot-ferragem/.env
+            echo "SNAPCONTROL_USER=${{ secrets.SNAPCONTROL_USER }}" >> ~/bot-ferragem/.env
+            echo "SNAPCONTROL_PASS=${{ secrets.SNAPCONTROL_PASS }}" >> ~/bot-ferragem/.env
+            echo "DASHBOARD_USER=${{ secrets.DASHBOARD_USER }}" >> ~/bot-ferragem/.env
+            echo "DASHBOARD_PASS=${{ secrets.DASHBOARD_PASS }}" >> ~/bot-ferragem/.env
+            # Roda a versão nova em segundo plano usando --env-file
+            docker run -d -p 3000:3000 --env-file ~/bot-ferragem/.env -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys -v ~/bot-ferragem/dev.db:/app/dev.db --name bot-marlene bot-image

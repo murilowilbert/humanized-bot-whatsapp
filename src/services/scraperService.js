@@ -106,12 +106,12 @@ async function fetchRealTimeStock(ean) {
 
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
 
-        // Identificadores APEX padrão (SnapControl) ou Genéricos
-        const userSelector = '#P200_USERNAME, #user, input[type="text"]';
-        const passSelector = '#P200_PASSWORD, #password, input[type="password"]';
-        const btnSelector = '#B200_LOGIN, #btn-login, button[type="submit"]';
+        // Identificadores APEX exatos (Passos 2, 3 e 4)
+        const userSelector = '#P101_USERNAME';
+        const passSelector = '#P101_PASSWORD';
+        const btnSelector = '#btn_login';
 
-        await page.waitForSelector(userSelector, { timeout: 5000 });
+        await page.waitForSelector(userSelector, { timeout: 10000 });
         await page.type(userSelector, snapUser);
         await page.type(passSelector, snapPass);
 
@@ -120,21 +120,41 @@ async function fetchRealTimeStock(ean) {
             page.click(btnSelector)
         ]);
 
-        // --- BUSCA DO PRODUTO PÓS-LOGIN ---
-        // Adapte a URL conforme a infraestrutura REST/APEX do SnapControl
-        const searchPath = snapUrl.includes('f?p=') ? snapUrl.replace(/f\?p=200:.*/, `produtos/buscar?q=${ean}`) : `${snapUrl}/produtos/buscar?q=${ean}`;
-        await page.goto(searchPath, { waitUntil: 'domcontentloaded' });
+        // Passo 5: Aguardar aba de produtos e clicar
+        const produtosMenuSelector = 'a[title="Produtos"]';
+        await page.waitForSelector(produtosMenuSelector, { timeout: 10000 });
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+            page.click(produtosMenuSelector)
+        ]);
 
-        const estoqueSelector = '.estoque-valor, .saldo-estoque, td.estoque';
+        // Passo 6: Aguardar barra de pesquisa, digitar EAN e dar Enter
+        const searchInputSelector = '#P90_PESQUISAR';
+        await page.waitForSelector(searchInputSelector, { timeout: 10000 });
+        await page.type(searchInputSelector, ean.toString());
+
+        // Disparando o formulário através da tecla Enter e aguardando recarga
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle2' }),
+            page.keyboard.press('Enter')
+        ]);
+
+        // Passo 7: Extrair o estoque da tabela td.estoque_td
+        const estoqueSelector = 'td.estoque_td';
 
         try {
-            await page.waitForSelector(estoqueSelector, { timeout: 3000 });
+            await page.waitForSelector(estoqueSelector, { timeout: 5000 });
             const estoqueText = await page.$eval(estoqueSelector, el => el.textContent);
-            console.log(`[Scraper] ✅ Saldo raspado para ${ean}: ${estoqueText}`);
-            return parseFloat(estoqueText.replace(',', '.')) || 0;
+
+            // Tratamento da string (de "46,00" para 46)
+            const cleanText = estoqueText.replace(',', '.');
+            const finalValue = Math.floor(parseFloat(cleanText)) || 0;
+
+            console.log(`[Scraper] ✅ Saldo raspado para ${ean}: ${finalValue}`);
+            return finalValue;
         } catch (e) {
             console.log(`[Scraper] Produto ${ean} sem estoque positivo ou não encontrado na tela.`);
-            return 0; // Interpreta falha visual/inexistêcia como Estoque 0 -> feature VIP Redirect
+            return 0; // Interpreta falha visual/inexistêcia como Estoque 0
         }
 
     } catch (error) {
