@@ -70,11 +70,14 @@ async function getCachedSheetData() {
         return sheetCache;
     }
 
-    const csvUrl = process.env.GOOGLE_SHEETS_CSV_URL || process.env.GOOGLE_SHEET_CSV_URL;
+    let csvUrl = process.env.GOOGLE_SHEETS_URL_PRINCIPAL || process.env.GOOGLE_SHEETS_CSV_URL || process.env.GOOGLE_SHEET_CSV_URL;
     if (!csvUrl) {
-        console.error("🚨 [ERRO CRÍTICO] Falha no Carregamento: Variável GOOGLE_SHEETS_CSV_URL não encontrada no .env ou Servidor. O Bot operará cego (0 itens)!");
+        console.error("🚨 [ERRO CRÍTICO] Falha no Carregamento: Variável GOOGLE_SHEETS_URL_PRINCIPAL não encontrada no .env ou Servidor. O Bot operará cego (0 itens)!");
         return null;
     }
+
+    // Garante que o usuário digitou o output=csv corretamente
+    csvUrl = csvUrl.replace(/\/pubhtml\/?$/, '/pub?output=csv');
 
     console.log("[Google Sheets] Baixando planilha e atualizando Cache em Memória...");
     const data = await fetchGoogleSheetCSV(csvUrl);
@@ -97,6 +100,25 @@ async function searchProductInSheet(keywordsArray) {
     if (!data || data.length === 0) return null;
 
     let searchTerms = Array.isArray(keywordsArray) ? keywordsArray : [keywordsArray];
+
+    // Interceptador de Busca Exata (Obrigatório para EAN / Fim da Alucinação)
+    for (const term of searchTerms) {
+        const strTerm = term.toString().trim();
+        // Se a instrução do motor for EAN puro (8 a 14 dígitos)
+        if (/^\d{8,14}$/.test(strTerm)) {
+            const exato = data.find(i =>
+                (i['código'] && i['código'].toString() === strTerm) ||
+                (i['codigo'] && i['codigo'].toString() === strTerm) ||
+                (i['ean'] && i['ean'].toString() === strTerm)
+            );
+
+            if (exato) {
+                console.log(`[Google Sheets] 🎯 EAN Exato interceptado: ${strTerm}. Ignorando Fuse.js fuzzy logic.`);
+                // Retorna estritamente 1 item para o LLM não confundir opções (Formato antigo legacy esperado pelo bot)
+                return [{ item: exato, matchCount: 10 }];
+            }
+        }
+    }
 
     // Configuração do Fuse.js
     const options = {
@@ -144,11 +166,13 @@ async function getCachedCategoryData() {
         return categoryCache;
     }
 
-    const csvUrl = process.env.GOOGLE_SHEETS_CATEGORIES_URL;
+    let csvUrl = process.env.GOOGLE_SHEETS_URL_GERAL || process.env.GOOGLE_SHEETS_CATEGORIES_URL;
     if (!csvUrl) {
-        console.warn("[Google Sheets] Variável GOOGLE_SHEETS_CATEGORIES_URL não definida. Tabela de Categorias ignorada.");
+        console.warn("[Google Sheets] Variável GOOGLE_SHEETS_URL_GERAL não definida. Tabela de Categorias ignorada.");
         return null; // Silent skip if not configured
     }
+
+    csvUrl = csvUrl.replace(/\/pubhtml\/?$/, '/pub?output=csv');
 
     console.log("[Google Sheets] Baixando planilha secundária de categorias...");
     const data = await fetchGoogleSheetCSV(csvUrl);

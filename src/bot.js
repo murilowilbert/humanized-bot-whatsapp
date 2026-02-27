@@ -107,17 +107,15 @@ async function sendHumanLikeResponse(jid, text) {
         try {
             if (filesToSend.length > 0) {
                 // A primeira imagem recebe o texto como legenda (caption)
-                const firstMediaBuffer = fs.readFileSync(filesToSend[0]);
                 await sock.sendMessage(jid, {
-                    image: firstMediaBuffer,
+                    image: { url: filesToSend[0] },
                     caption: part.length > 0 ? part : undefined
                 });
 
                 // As outras imagens (se houver mais de uma na mesma linha) vão sem legenda
                 for (let j = 1; j < filesToSend.length; j++) {
                     await new Promise(resolve => setTimeout(resolve, 800));
-                    const nextMediaBuffer = fs.readFileSync(filesToSend[j]);
-                    await sock.sendMessage(jid, { image: nextMediaBuffer });
+                    await sock.sendMessage(jid, { image: { url: filesToSend[j] } });
                 }
             } else {
                 // Nenhuma imagem, manda só o texto normal
@@ -355,6 +353,7 @@ async function setupEvents() {
                 let stockContext = [];
                 let finalVisualKeyword = null;
                 let expandedQueryArray = [];
+                let isTriageActive = false;
 
                 if (intent === 'SEARCH') {
                     expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
@@ -450,6 +449,7 @@ async function setupEvents() {
                                 Produto: `Triagem para ${categoryMatch['categoria_geral']}`,
                                 Disponibilidade: 'Aguardando especificações do cliente'
                             }];
+                            isTriageActive = true;
                         }
                     }
                 }
@@ -560,8 +560,8 @@ async function setupEvents() {
                     }
                 }
 
-                // B) Human Handoff
-                if (response.needsHandoff) {
+                // B) Human Handoff (Bloqueia repasse imediato se foi detectada a Triagem de Categorias Gerais)
+                if (response.needsHandoff && !isTriageActive) {
                     if (isOpen()) {
                         await sock.sendMessage(jid, { text: "Vou repassar para um atendente responder certinho para você, só um segundo." });
                     } else {
