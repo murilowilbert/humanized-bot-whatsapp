@@ -16,7 +16,7 @@ const catalogService = require('./services/catalogService');
 const server = require('./server/app');
 
 const interactionTimeouts = new Map();
-const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
+const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutos
 
 // Sistema de fila de mensagens (Debouncing)
 const userMessageQueues = new Map();
@@ -346,9 +346,10 @@ async function setupEvents() {
 
                 let stockContext = [];
                 let finalVisualKeyword = null;
+                let expandedQueryArray = [];
 
                 if (intent === 'SEARCH') {
-                    const expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
+                    expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                     // Passa o array rico de expansões para o Fuse.js/Stock
                     stockContext = await stockService.searchProduct(expandedQueryArray);
@@ -433,7 +434,7 @@ async function setupEvents() {
                             console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Injetando perguntas: ${perguntas}`);
 
                             // Força a IA a fazer o papel de Triagem ao invés de Handoff
-                            combinedText += `\n\n[INSTRUÇÃO DE SISTEMA OCULTA: O cliente pediu um item muito genérico e precisamos de mais detalhes antes de passar o orçamento. Você NÃO DEVE transferir para o atendente agora. INVERTA O JOGO e faça EXATAMENTE as seguintes perguntas para o cliente para triar o pedido: "${perguntas}"]`;
+                            combinedText += `\n\n[INSTRUÇÃO DE SISTEMA OCULTA PARA TRIAGEM: O cliente busca pela categoria '${categoryMatch['categoria_geral']}' (baseado nas tags associadas). REGRA OBRIGATÓRIA: 1) Analise as seguintes "Perguntas de Triagem" ("${perguntas}") e ESCOLHA APENAS UMA pergunta que o cliente AINDA NÃO respondeu para fazer agora. 2) Se nas perguntas houver recomendação para "trazer a peça/foto na loja", cite isso na sua resposta. 3) Finalize a mensagem avisando que você já vai transferir para um atendente humano confirmar os detalhes do orçamento com ele na sequência.]`;
 
                             // Adiciona um falso positivo temporário no contexto para o bot não disparar o Fallback de "Estoque Vazio -> Handoff"
                             stockContext = [{
