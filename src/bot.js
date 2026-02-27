@@ -74,52 +74,54 @@ function isOpen() {
 async function sendHumanLikeResponse(jid, text) {
     if (!text) return;
 
-    // Split by single or multiple newlines to create bubbles per paragraph
-    const parts = text.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
+    // 1. Extrair todos os códigos (EAN/IDs) da string inteira
+    const regexCodGlobal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
+    const allMatches = Array.from(text.matchAll(regexCodGlobal));
+    const extractedCodes = allMatches.map(m => m[1]);
+
+    // 2. Limpar todas as tags do texto principal
+    let cleanText = text.replace(regexCodGlobal, '').trim();
+
+    // 3. Enviar o texto em bolhas (separado por quebras de linha)
+    const parts = cleanText.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
 
     for (let i = 0; i < parts.length; i++) {
         let part = parts[i].trim();
         if (!part) continue;
 
-        // regex to catch both [COD: 123] and {{COD: 123}}
-        const codMatch = part.match(/(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/i);
-        let fileToSend = null;
-
-        if (codMatch) {
-            const cod = codMatch[1];
-
-            const pathsToCheck = [
-                path.join(__dirname, `../data/fotos/${cod}.jpg`),
-                path.join(__dirname, `../data/fotos/${cod}.png`),
-                path.join(__dirname, `../data/fotos_sheets/${cod}.jpg`),
-                path.join(__dirname, `../data/fotos_sheets/${cod}.png`),
-                path.join(__dirname, `../assets/imagens_produtos/${cod}.jpg`),
-                path.join(__dirname, `../assets/imagens_produtos/${cod}.png`)
-            ];
-            fileToSend = pathsToCheck.find(p => fs.existsSync(p));
-        }
-
-        // Limpeza Incondicional da Tag
-        const regexCod = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
-        part = part.replace(regexCod, '').trim();
-
         try {
-            if (fileToSend) {
-                const mediaBuffer = fs.readFileSync(fileToSend);
-                await sock.sendMessage(jid, {
-                    image: mediaBuffer,
-                    caption: part
-                });
-            } else {
-                if (part.length > 0) {
-                    await sock.sendMessage(jid, { text: part });
-                }
-            }
-
-            // Pausa sutil entre mensagens
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await sock.sendMessage(jid, { text: part });
+            // Pausa sutil entre bolhas de texto
+            await new Promise(resolve => setTimeout(resolve, 800));
         } catch (error) {
-            console.error(`Erro ao enviar parte da mensagem no WhatsApp (Index ${i}):`, error);
+            console.error(`Erro ao enviar bolha de texto (Index ${i}):`, error);
+        }
+    }
+
+    // 4. Enviar as fotos em lote (Multi-Image Support)
+    const sentCodes = new Set();
+    for (const cod of extractedCodes) {
+        if (sentCodes.has(cod)) continue; // Evita enviar a mesma foto 2x
+        sentCodes.add(cod);
+
+        const pathsToCheck = [
+            path.join(__dirname, `../data/fotos/${cod}.jpg`),
+            path.join(__dirname, `../data/fotos/${cod}.png`),
+            path.join(__dirname, `../data/fotos_sheets/${cod}.jpg`),
+            path.join(__dirname, `../data/fotos_sheets/${cod}.png`),
+            path.join(__dirname, `../assets/imagens_produtos/${cod}.jpg`),
+            path.join(__dirname, `../assets/imagens_produtos/${cod}.png`)
+        ];
+        const fileToSend = pathsToCheck.find(p => fs.existsSync(p));
+
+        if (fileToSend) {
+            try {
+                const mediaBuffer = fs.readFileSync(fileToSend);
+                await sock.sendMessage(jid, { image: mediaBuffer });
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (error) {
+                console.error(`Erro ao enviar imagem multi-lote do COD: ${cod}`, error);
+            }
         }
     }
 }
@@ -418,6 +420,29 @@ async function setupEvents() {
                     }
                 } else if (intent === 'FAQ') {
                     console.log(`[Intent Router] Intenção de 'FAQ' detectada. Ignorando consulta de db/estoque.`);
+                }
+
+                // Feature 9: Category Triage Fallback (Evitar handoff imediato para itens genéricos)
+                if (intent === 'SEARCH' && (!stockContext || stockContext.length === 0)) {
+                    console.log(`[Busca Categoria] Estoque zerado para a busca. Tentando triagem genérica de categoria...`);
+                    const categoryMatch = await stockService.searchCategory(searchKeywords);
+
+                    if (categoryMatch) {
+                        const perguntas = categoryMatch['perguntas_recomendadas'] || categoryMatch['perguntas recomendadas'] || categoryMatch.perguntas;
+                        if (perguntas) {
+                            console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Injetando perguntas: ${perguntas}`);
+
+                            // Força a IA a fazer o papel de Triagem ao invés de Handoff
+                            combinedText += `\n\n[INSTRUÇÃO DE SISTEMA OCULTA: O cliente pediu um item muito genérico e precisamos de mais detalhes antes de passar o orçamento. Você NÃO DEVE transferir para o atendente agora. INVERTA O JOGO e faça EXATAMENTE as seguintes perguntas para o cliente para triar o pedido: "${perguntas}"]`;
+
+                            // Adiciona um falso positivo temporário no contexto para o bot não disparar o Fallback de "Estoque Vazio -> Handoff"
+                            stockContext = [{
+                                Codigo: 'TRIAGEM',
+                                Produto: `Triagem para ${categoryMatch['categoria_geral']}`,
+                                Disponibilidade: 'Aguardando especificações do cliente'
+                            }];
+                        }
+                    }
                 }
 
                 // 4. Generate Response & 5. Send Response

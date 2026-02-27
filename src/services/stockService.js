@@ -146,9 +146,20 @@ async function getSimilarProducts(product) {
     ).slice(0, 3); // Return top 3
 }
 
+/**
+ * Searches for a broad category fallback to triage before human handoff.
+ */
+async function searchCategory(query) {
+    const categoryResult = await googleSheetsService.searchCategoryInSheet(query);
+    if (categoryResult) {
+        console.log(`[Busca Categoria] Match encontrado para "${query}": ${categoryResult.categoria_geral}`);
+    }
+    return categoryResult;
+}
 module.exports = {
     loadStock,
     searchProduct,
+    searchCategory,
     getProductByCode,
     getSimilarProducts
 };

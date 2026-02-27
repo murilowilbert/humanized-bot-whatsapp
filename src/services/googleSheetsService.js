@@ -4,6 +4,8 @@ const Fuse = require('fuse.js');
 
 let sheetCache = null;
 let lastCacheTime = 0;
+let categoryCache = null;
+let lastCategoryCacheTime = 0;
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
 
 // Função auxiliar para interpretar a linha do CSV com aspas
@@ -104,7 +106,10 @@ async function searchProductInSheet(keywordsArray) {
         keys: [
             { name: 'modelo/produto', weight: 0.6 },
             { name: 'tags para busca (sinônimos)', weight: 0.3 },
-            { name: 'características principais', weight: 0.1 }
+            { name: 'características principais', weight: 0.1 },
+            { name: 'código', weight: 0.9 },
+            { name: 'codigo', weight: 0.9 },
+            { name: 'ean', weight: 0.9 }
         ]
     };
 
@@ -133,4 +138,58 @@ async function searchProductInSheet(keywordsArray) {
     }));
 }
 
-module.exports = { fetchGoogleSheetCSV, searchProductInSheet };
+async function getCachedCategoryData() {
+    const now = Date.now();
+    if (categoryCache && (now - lastCategoryCacheTime) < CACHE_TTL_MS) {
+        return categoryCache;
+    }
+
+    const csvUrl = process.env.GOOGLE_SHEETS_CATEGORIES_URL;
+    if (!csvUrl) {
+        console.warn("[Google Sheets] Variável GOOGLE_SHEETS_CATEGORIES_URL não definida. Tabela de Categorias ignorada.");
+        return null; // Silent skip if not configured
+    }
+
+    console.log("[Google Sheets] Baixando planilha secundária de categorias...");
+    const data = await fetchGoogleSheetCSV(csvUrl);
+    if (data) {
+        categoryCache = data;
+        lastCategoryCacheTime = now;
+        console.log(`[Google Sheets] ✅ Cache de Categorias Atualizado com Sucesso: ${data.length} categorias/triagens.`);
+    }
+    return categoryCache;
+}
+
+/**
+ * Busca por palavras-chaves na segunda aba de Categorias Gerais para fallback process.
+ */
+async function searchCategoryInSheet(keywordsArray) {
+    const data = await getCachedCategoryData();
+    if (!data || data.length === 0) return null;
+
+    let searchTerms = Array.isArray(keywordsArray) ? keywordsArray : [keywordsArray];
+
+    const options = {
+        includeScore: true,
+        threshold: 0.3, // Threshold mais baixo (mais estrito)
+        ignoreLocation: true,
+        keys: [
+            { name: 'categoria_geral', weight: 1.0 },
+            { name: 'sinonimos', weight: 0.8 } // A planilha cliente pode ter uma coluna sinonimos
+        ]
+    };
+
+    const fuse = new Fuse(data, options);
+
+    // Busca e retorna o Top 1 mais assertivo
+    for (const term of searchTerms) {
+        const results = fuse.search(term);
+        if (results && results.length > 0) {
+            return results[0].item;
+        }
+    }
+
+    return null;
+}
+
+module.exports = { fetchGoogleSheetCSV, searchProductInSheet, searchCategoryInSheet };
