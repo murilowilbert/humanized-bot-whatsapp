@@ -74,54 +74,62 @@ function isOpen() {
 async function sendHumanLikeResponse(jid, text) {
     if (!text) return;
 
-    // 1. Extrair todos os códigos (EAN/IDs) da string inteira
-    const regexCodGlobal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
-    const allMatches = Array.from(text.matchAll(regexCodGlobal));
-    const extractedCodes = allMatches.map(m => m[1]);
-
-    // 2. Limpar todas as tags do texto principal
-    let cleanText = text.replace(regexCodGlobal, '').trim();
-
-    // 3. Enviar o texto em bolhas (separado por quebras de linha)
-    const parts = cleanText.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
+    // Resolve as partes por parágrafo
+    const parts = text.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
 
     for (let i = 0; i < parts.length; i++) {
         let part = parts[i].trim();
         if (!part) continue;
 
+        // Tenta achar todos os CODs na parte para carregar as fotos
+        const regexCodGlobal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
+        const codMatches = Array.from(part.matchAll(regexCodGlobal));
+        const extractedCodes = codMatches.map(m => m[1]);
+
+        // Remove a tag do texto incondicionalmente
+        part = part.replace(regexCodGlobal, '').trim();
+
+        // Encontra os buffers das imagens
+        const filesToSend = [];
+        for (const cod of extractedCodes) {
+            const pathsToCheck = [
+                path.join(__dirname, `../data/fotos/${cod}.jpg`),
+                path.join(__dirname, `../data/fotos/${cod}.png`),
+                path.join(__dirname, `../data/fotos_sheets/${cod}.jpg`),
+                path.join(__dirname, `../data/fotos_sheets/${cod}.png`),
+                path.join(__dirname, `../assets/imagens_produtos/${cod}.jpg`),
+                path.join(__dirname, `../assets/imagens_produtos/${cod}.png`)
+            ];
+            const file = pathsToCheck.find(p => fs.existsSync(p));
+            if (file) filesToSend.push(file);
+        }
+
         try {
-            await sock.sendMessage(jid, { text: part });
-            // Pausa sutil entre bolhas de texto
+            if (filesToSend.length > 0) {
+                // A primeira imagem recebe o texto como legenda (caption)
+                const firstMediaBuffer = fs.readFileSync(filesToSend[0]);
+                await sock.sendMessage(jid, {
+                    image: firstMediaBuffer,
+                    caption: part.length > 0 ? part : undefined
+                });
+
+                // As outras imagens (se houver mais de uma na mesma linha) vão sem legenda
+                for (let j = 1; j < filesToSend.length; j++) {
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    const nextMediaBuffer = fs.readFileSync(filesToSend[j]);
+                    await sock.sendMessage(jid, { image: nextMediaBuffer });
+                }
+            } else {
+                // Nenhuma imagem, manda só o texto normal
+                if (part.length > 0) {
+                    await sock.sendMessage(jid, { text: part });
+                }
+            }
+
+            // Pausa sutil entre envio dos parágrafos
             await new Promise(resolve => setTimeout(resolve, 800));
         } catch (error) {
-            console.error(`Erro ao enviar bolha de texto (Index ${i}):`, error);
-        }
-    }
-
-    // 4. Enviar as fotos em lote (Multi-Image Support)
-    const sentCodes = new Set();
-    for (const cod of extractedCodes) {
-        if (sentCodes.has(cod)) continue; // Evita enviar a mesma foto 2x
-        sentCodes.add(cod);
-
-        const pathsToCheck = [
-            path.join(__dirname, `../data/fotos/${cod}.jpg`),
-            path.join(__dirname, `../data/fotos/${cod}.png`),
-            path.join(__dirname, `../data/fotos_sheets/${cod}.jpg`),
-            path.join(__dirname, `../data/fotos_sheets/${cod}.png`),
-            path.join(__dirname, `../assets/imagens_produtos/${cod}.jpg`),
-            path.join(__dirname, `../assets/imagens_produtos/${cod}.png`)
-        ];
-        const fileToSend = pathsToCheck.find(p => fs.existsSync(p));
-
-        if (fileToSend) {
-            try {
-                const mediaBuffer = fs.readFileSync(fileToSend);
-                await sock.sendMessage(jid, { image: mediaBuffer });
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (error) {
-                console.error(`Erro ao enviar imagem multi-lote do COD: ${cod}`, error);
-            }
+            console.error(`Erro ao enviar bolha/imagem (Index ${i}):`, error);
         }
     }
 }
@@ -434,7 +442,7 @@ async function setupEvents() {
                             console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Injetando perguntas: ${perguntas}`);
 
                             // Força a IA a fazer o papel de Triagem ao invés de Handoff
-                            combinedText += `\n\n[INSTRUÇÃO DE SISTEMA OCULTA PARA TRIAGEM: O cliente busca pela categoria '${categoryMatch['categoria_geral']}' (baseado nas tags associadas). REGRA OBRIGATÓRIA: 1) Analise as seguintes "Perguntas de Triagem" ("${perguntas}") e ESCOLHA APENAS UMA pergunta que o cliente AINDA NÃO respondeu para fazer agora. 2) Se nas perguntas houver recomendação para "trazer a peça/foto na loja", cite isso na sua resposta. 3) Finalize a mensagem avisando que você já vai transferir para um atendente humano confirmar os detalhes do orçamento com ele na sequência.]`;
+                            combinedText += `\n\n[INSTRUÇÃO DE SISTEMA OCULTA PARA TRIAGEM: O cliente busca pela categoria '${categoryMatch['categoria_geral']}'. REGRA ABSOLUTA: Quando você identificar um produto nesta Tabela Geral, VOCÊ É PROIBIDO de avisar que vai chamar um atendente ou repassar a conversa nesta exata mensagem. A sua ÚNICA ação permitida é fazer UMA das Perguntas_Recomendadas ("${perguntas}") para o cliente afunilar o pedido (apenas perguntas que ele ainda NÃO respondeu). O Handoff para o atendente humano só ocorrerá na próxima iteração, DEPOIS que ele interagir. Se as perguntas recomendar que ele "traga a foto/peça na loja", diga isso amigavelmente e pare aí.]`;
 
                             // Adiciona um falso positivo temporário no contexto para o bot não disparar o Fallback de "Estoque Vazio -> Handoff"
                             stockContext = [{
