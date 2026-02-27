@@ -459,6 +459,34 @@ ${itemsListTxt}`;
     }
 }
 
+/**
+ * Naturaliza a pergunta de triagem formatada crua da planilha
+ */
+async function naturalizeTriageQuestion(category, rawInstructions) {
+    if (!rawInstructions) return "Qual modelo ou marca você prefere?";
+
+    try {
+        const prompt = `O usuário está buscando um produto da categoria '${category}'.
+Sua única tarefa é formular UMA (1) pergunta rápida, direta, prestativa e amigável baseada nestas diretrizes operacionais: "${rawInstructions}".
+NÃO use vocabulário complexo. NÃO diga "bom dia/boa tarde". NÃO diga que vai repassar para um atendente. Aja como se fosse o humano da loja perguntando para afunilar o pedido.
+Exemplo ruim: "Irei repassar ao humano, mas antes me diga..."
+Exemplo excelente: "Para qual modelo de vaso seria? Saberia me dizer a cor?"`;
+
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            systemInstruction: { parts: [{ text: "Você é um atendente rápido de WhatsApp transformando instruções engessadas em perguntas naturais." }] }
+        });
+
+        const naturalText = result.response.text().trim();
+        console.log(`[Triage AI] Instrução '${rawInstructions}' -> Naturalizada: '${naturalText}'`);
+        return naturalText;
+    } catch (e) {
+        console.error("Erro ao naturalizar pergunta de triagem:", e);
+        // Fallback: tenta pegar a primeira frase do raw e limpar
+        return rawInstructions.split(/(?:\r?\n|;)/)[0] || "Saberia me dar mais detalhes sobre o modelo?";
+    }
+}
+
 module.exports = {
     generateResponse,
     transcribeAudio,
@@ -466,5 +494,6 @@ module.exports = {
     verifyProductImageWithCatalog,
     expandSearchQuery,
     classifyIntent,
-    semanticPreRanking
+    semanticPreRanking,
+    naturalizeTriageQuestion
 };

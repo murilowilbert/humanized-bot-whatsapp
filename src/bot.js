@@ -24,6 +24,7 @@ const userMessageQueues = new Map();
 const userProcessingTimers = new Map();
 const userIsProcessing = new Map(); // Trava de concorrência
 const userPausedStates = new Map(); // Controle de Handoff/Pausa
+const userSessions = new Map(); // Controle de Máquina de Estados (Triage, etc)
 const DEBOUNCE_TIME_MS = 5000; // Tempo de espera para o usuário terminar de digitar
 
 let sock = null;
@@ -205,6 +206,61 @@ async function setupEvents() {
             }
         }
 
+        // 0.2 Check Power & Test Mode
+        if (!server.isBotEnabled()) {
+            console.log("Bot desligado. Ignorando.");
+            return;
+        }
+
+        const allowedNumbers = server.getAllowedNumbers();
+        const isAdmin = allowedNumbers.some(num => headers.includes(num));
+
+        if (server.isTestMode()) {
+            if (!isAdmin) {
+                console.log(`Ignorando ${headers} (Modo Teste Ativo)`);
+                return;
+            }
+        }
+
+        // 0.3 Global Override for "Reiniciar"
+        const lowerText = textContent.trim().toLowerCase();
+        if (isAdmin && (lowerText === 'reiniciar' || lowerText === 'restart')) {
+            console.log(`[Global Override] Comando Reiniciar detectado por ${headers}. Limpando estados...`);
+            userSessions.delete(jid);
+            userPausedStates.delete(jid);
+            userIsProcessing.delete(jid);
+
+            if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
+            if (userProcessingTimers.has(jid)) clearTimeout(userProcessingTimers.get(jid));
+            if (interactionTimeouts.has(jid)) {
+                clearTimeout(interactionTimeouts.get(jid));
+                interactionTimeouts.delete(jid);
+            }
+
+            await prisma.chatHistory.deleteMany({ where: { phoneNumber: headers } });
+            await sock.sendMessage(jid, { text: "♻️ Sessão reiniciada com sucesso. Memória e estados da Máquina foram apagados." });
+            return;
+        }
+
+        // 0.4 State Machine: AWAITING_TRIAGE_ANSWER
+        if (userSessions.has(jid) && userSessions.get(jid).state === 'AWAITING_TRIAGE_ANSWER') {
+            console.log(`[State Machine] Usuário ${headers} respondeu à Triagem. Acionando Handoff Real...`);
+            userSessions.delete(jid); // Reseta o estado
+
+            await sock.sendPresenceUpdate('composing', jid);
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            const confirmMsg = "Certo, já anotei aqui! Vou repassar para um atendente continuar o atendimento com esses detalhes, só um segundo.";
+            await sock.sendMessage(jid, { text: confirmMsg });
+
+            await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'user', content: textContent } });
+            await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: confirmMsg } });
+
+            userPausedStates.set(jid, getBrazilDateString());
+            metricsService.incrementHandoff();
+            return; // 🛑 ABORTA a fila. O handoff foi consumado.
+        }
+
         console.log(`Recebido de ${pushname} (${headers}): ${textContent} (Aguardando debounce...)`);
         metricsService.incrementMessages();
 
@@ -244,28 +300,7 @@ async function setupEvents() {
             }
         }
 
-        // 0.2 Check Power & Test Mode
-        if (!server.isBotEnabled()) {
-            console.log("Bot desligado. Ignorando.");
-            return;
-        }
-
-        const allowedNumbers = server.getAllowedNumbers();
-        const isAdmin = allowedNumbers.some(num => headers.includes(num));
-
-        if (server.isTestMode()) {
-            if (!isAdmin) {
-                console.log(`Ignorando ${headers} (Modo Teste Ativo)`);
-                return;
-            }
-        }
-
-        // 0.3 Check for "Reiniciar" command
-        if (isAdmin && textContent && textContent.toLowerCase() === 'reiniciar') {
-            await prisma.chatHistory.deleteMany({ where: { phoneNumber: headers } });
-            await sock.sendMessage(jid, { text: "♻️ Conversa e histórico SQL reiniciados! Sou a IA da Ferragem Marlene, como posso ajudar?" });
-            return;
-        }
+        // Checks already handled above
 
         // 1. Check Holidays & Working Hours
         if (!isAdmin && (isHoliday() || !isOpen())) {
@@ -472,36 +507,33 @@ async function setupEvents() {
                     if (categoryMatch) {
                         const perguntas = categoryMatch['perguntas_recomendadas'] || categoryMatch['perguntas recomendadas'] || categoryMatch.perguntas;
                         if (perguntas) {
-                            console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Assumindo controle e BYPASSANDO a IA Final...`);
+                            console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Assumindo controle bypass + AI Naturalization...`);
 
-                            // Pega a primeira pergunta separada por quebra de linha ou instrução direta
-                            const perguntasArray = perguntas.split(/(?:\r?\n|;)/).map(p => p.trim()).filter(Boolean);
-                            const perguntaSelecionada = perguntasArray[0] || perguntas;
+                            // 1. Naturaliza a pergunta engessada com o LLM (Rodada 1 da Máquina de Estados)
+                            const perguntasFormuladas = await aiService.naturalizeTriageQuestion(categoryMatch['categoria_geral'], perguntas);
+                            const fallbackText = `Temos opções de ${categoryMatch['categoria_geral']} sim! ${perguntasFormuladas}`;
 
-                            const fallbackText = `Temos opções de ${categoryMatch['categoria_geral']} sim! ${perguntaSelecionada}\n\n*(Já vou chamar um atendente para te ajudar com isso, só um segundo!)*`;
-
-                            // 1. Salva a mensagem original do usuário
+                            // 2. Salva a mensagem original do usuário
                             await prisma.chatHistory.create({
                                 data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
                             });
 
-                            // 2. Aciona o estado de "digitando" rápido
+                            // 3. Aciona o estado de "digitando" rápido
                             await sock.sendPresenceUpdate('composing', jid);
-                            await new Promise(resolve => setTimeout(resolve, 1500));
+                            await new Promise(resolve => setTimeout(resolve, 2000));
 
-                            // 3. Envia a resposta seca hardcoded DIRETO pelo Baileys
+                            // 4. Envia a pergunta naturalizada
                             await sock.sendMessage(jid, { text: fallbackText });
 
-                            // 4. Salva a resposta do Bot
+                            // 5. Salva a resposta do Bot
                             await prisma.chatHistory.create({
                                 data: { phoneNumber: headers, role: 'model', content: fallbackText }
                             });
 
-                            // 5. Congela a IA e Repassa pro Atendente (Handoff Silencioso)
-                            userPausedStates.set(jid, getBrazilDateString());
-                            metricsService.incrementHandoff();
+                            // 6. Seta o Estado para aguardar a resposta do cliente ANTES de dar Handoff (Rodada 2)
+                            userSessions.set(jid, { state: 'AWAITING_TRIAGE_ANSWER' });
 
-                            return; // 🛑 ABORTA AQUI! O aiserice.generateResponse NUNCA será chamado.
+                            return; // 🛑 ABORTA AQUI! Não congela a IA (userPausedStates) e nem gera fila pro Atendente ainda.
                         }
                     }
 
