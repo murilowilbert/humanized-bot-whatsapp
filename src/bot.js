@@ -442,18 +442,36 @@ async function setupEvents() {
                     if (categoryMatch) {
                         const perguntas = categoryMatch['perguntas_recomendadas'] || categoryMatch['perguntas recomendadas'] || categoryMatch.perguntas;
                         if (perguntas) {
-                            console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Injetando perguntas: ${perguntas}`);
+                            console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Assumindo controle e bypassando IA...`);
 
-                            // Força a IA a fazer o papel de Triagem ao invés de Handoff
-                            combinedText += `\n\n[INSTRUÇÃO DE SISTEMA OCULTA PARA TRIAGEM: O cliente busca pela categoria '${categoryMatch['categoria_geral']}'. REGRA ABSOLUTA: Quando você identificar um produto nesta Tabela Geral, VOCÊ É PROIBIDO de avisar que vai chamar um atendente ou repassar a conversa nesta exata mensagem. A sua ÚNICA ação permitida é fazer UMA das Perguntas_Recomendadas ("${perguntas}") para o cliente afunilar o pedido (apenas perguntas que ele ainda NÃO respondeu). O Handoff para o atendente humano só ocorrerá na próxima iteração, DEPOIS que ele interagir. Se as perguntas recomendar que ele "traga a foto/peça na loja", diga isso amigavelmente e pare aí.]`;
+                            // Pega a primeira pergunta separada por quebra de linha ou instrução direta
+                            const perguntasArray = perguntas.split(/(?:\r?\n|;)/).map(p => p.trim()).filter(Boolean);
+                            const perguntaSelecionada = perguntasArray[0] || perguntas;
 
-                            // Adiciona um falso positivo temporário no contexto para o bot não disparar o Fallback de "Estoque Vazio -> Handoff"
-                            stockContext = [{
-                                Codigo: 'TRIAGEM',
-                                Produto: `Triagem para ${categoryMatch['categoria_geral']}`,
-                                Disponibilidade: 'Aguardando especificações do cliente'
-                            }];
-                            isTriageActive = true;
+                            const fallbackText = `Temos ${categoryMatch['categoria_geral']} sim! ${perguntaSelecionada}\n\n*(Já vou chamar um atendente para te ajudar com isso, só um segundo!)*`;
+
+                            // 1. Salva a mensagem original do usuário pra não perder histórico
+                            await prisma.chatHistory.create({
+                                data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
+                            });
+
+                            // 2. Aciona o estado de "digitando" rápido
+                            await sock.sendPresenceUpdate('composing', jid);
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+
+                            // 3. Envia a resposta seca hardcoded
+                            await sock.sendMessage(jid, { text: fallbackText });
+
+                            // 4. Salva a resposta do Bot
+                            await prisma.chatHistory.create({
+                                data: { phoneNumber: headers, role: 'model', content: fallbackText }
+                            });
+
+                            // 5. Congela a IA e Repassa pro Atendente (Handoff)
+                            userPausedStates.set(jid, getBrazilDateString());
+                            metricsService.incrementHandoff();
+
+                            return; // 🛑 ABORTA aqui, garantindo que NÃO CHAME o aiService.generateResponse
                         }
                     }
                 }

@@ -332,6 +332,9 @@ Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
             rawResponse = rawResponse.substring(3, rawResponse.length - 3).trim();
         }
 
+        // Bug Fix: Remove any leftover markdown code blocks to prevent JSON.parse syntax error
+        rawResponse = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+
         const expandedTerms = JSON.parse(rawResponse);
         console.log(`[Query Expansion] Original: "${userMessage}" -> Expandido:`, expandedTerms);
 
@@ -395,7 +398,7 @@ async function semanticPreRanking(visualDescription, contextItems) {
 
     const prompt = `Você atua como um pre-rankeador de banco de dados.
 Sua missão: Cruze a descrição da busca/foto recebida com a lista candidata de produtos do nosso estoque. Foque estritamente nas características físicas e de formato (ex: se é redondo, quadrado, haste solta, cor, acabamento).
-Retorne APENAS os IDs numéricos dos 5 produtos que mais se assemelham à descrição. Separe os IDs por vírgula e NÃO forneça nenhuma outra explicação ou texto além da lista de IDs.
+Retorne APENAS os 5 códigos numéricos (EAN ou ID) separados por vírgula, sem texto adicional e sem blocos de código.
 Se houver menos de 5 parecidos, retorne os que houverem.
 
 [Descrição da Foto/Busca]: ${visualDescription}
@@ -410,7 +413,8 @@ ${itemsListTxt}`;
         });
 
         const rawText = result.response.text().trim();
-        const ids = rawText.match(/\d+/g) || [];
+        // Bug Fix: Faz split por vírgula e garante que extraiu apenas as strings limpas
+        const ids = rawText.split(',').map(s => s.trim().match(/\d+/)?.[0]).filter(Boolean);
 
         if (ids.length === 0) {
             console.log("[Semantic Pre-Ranking] Nenhum ID numérico detectado na resposta da IA. Retornando os 5 primeiros padroes.");
