@@ -193,13 +193,36 @@ async function searchCategoryInSheet(keywordsArray) {
 
     let searchTerms = Array.isArray(keywordsArray) ? keywordsArray : [keywordsArray];
 
+    for (const term of searchTerms) {
+        const lowerTerm = term.toString().toLowerCase().trim();
+        if (lowerTerm.length < 3) continue;
+
+        const exactMatch = data.find(c => {
+            const catName = (c['categoria_geral'] || '').toLowerCase();
+            const tagsStr = (c['tags para busca (sinônimos)'] || c['sinonimos'] || c['tags'] || '').toLowerCase();
+
+            // Match direto no nome ou vice-versa
+            if (catName.includes(lowerTerm) || lowerTerm.includes(catName)) return true;
+
+            // Match fracionado nos sinônimos (Separados por vírgula)
+            const tags = tagsStr.split(',').map(t => t.trim());
+            return tags.some(tag => tag && (lowerTerm.includes(tag) || tag.includes(lowerTerm)));
+        });
+
+        if (exactMatch) {
+            console.log(`[Google Sheets] 🎯 Match Parcial/Tag encontrado para Categoria: ${exactMatch['categoria_geral']}`);
+            return exactMatch;
+        }
+    }
+
     const options = {
         includeScore: true,
         threshold: 0.3, // Threshold mais baixo (mais estrito)
         ignoreLocation: true,
         keys: [
             { name: 'categoria_geral', weight: 1.0 },
-            { name: 'sinonimos', weight: 0.8 } // A planilha cliente pode ter uma coluna sinonimos
+            { name: 'tags para busca (sinônimos)', weight: 0.8 },
+            { name: 'sinonimos', weight: 0.8 }
         ]
     };
 
@@ -216,4 +239,10 @@ async function searchCategoryInSheet(keywordsArray) {
     return null;
 }
 
-module.exports = { fetchGoogleSheetCSV, searchProductInSheet, searchCategoryInSheet };
+module.exports = {
+    fetchGoogleSheetCSV,
+    searchProductInSheet,
+    searchCategoryInSheet,
+    getCachedSheetData,
+    getCachedCategoryData
+};

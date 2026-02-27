@@ -13,6 +13,7 @@ const stockService = require('./services/stockService');
 const aiService = require('./services/aiService');
 const metricsService = require('./services/metricsService');
 const catalogService = require('./services/catalogService');
+const googleSheetsService = require('./services/googleSheetsService'); // Injetado para boot caching
 const server = require('./server/app');
 
 const interactionTimeouts = new Map();
@@ -363,9 +364,12 @@ async function setupEvents() {
 
                     // Feature 8: Visual Verification com Gabarito (Oracle Master)
                     if (lastMedia && lastMedia.mimeType.startsWith('image/') && stockContext && stockContext.length > 0) {
+                        console.log("[Semantic Pre-Ranking] Refinando opções da busca inicial...");
+                        const refinedStock = await aiService.semanticPreRanking(searchKeywords, stockContext.slice(0, 15));
+
                         console.log("[Verificação Visual] Buscando gabaritos no HD...");
                         const candidatesLocal = [];
-                        const itemsToCheck = stockContext.slice(0, 5);
+                        const itemsToCheck = refinedStock.slice(0, 5);
 
                         for (const cand of itemsToCheck) {
                             const productData = cand.item || cand;
@@ -637,6 +641,10 @@ async function initialize() {
     if (initialized) return;
 
     try {
+        console.log("[Boot] Iniciando aquecimento de Caches (Google Sheets)...");
+        await googleSheetsService.getCachedSheetData();
+        await googleSheetsService.getCachedCategoryData();
+
         const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
         const { version } = await fetchLatestBaileysVersion();
 

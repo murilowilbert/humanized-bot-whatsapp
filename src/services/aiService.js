@@ -375,11 +375,94 @@ Retorne APENAS a string "STORE_FAQ" ou "PRODUCT_SEARCH".`;
     }
 }
 
+/**
+ * Cruza a descrição visual com os resultados brutos do Fuse.js e extrai os 5 mais prováveis
+ * baseados em formato, cor e tipo (Fim da Busca Burra).
+ */
+async function semanticPreRanking(visualDescription, contextItems) {
+    if (!contextItems || contextItems.length === 0) return [];
+
+    // Preparar lista enxuta para o Prompt
+    const itemsListTxt = contextItems.map((c, index) => {
+        const item = c.item || c;
+        const code = item['código'] || item['codigo'] || item.Codigo || index;
+        const desc = item['modelo/produto'] || item.Produto || "";
+        const tags = item['tags para busca (sinônimos)'] || item['características principais'] || "";
+        let line = `ID: ${code} | Nome: ${desc}`;
+        if (tags) line += ` | Tags: ${tags}`;
+        return line;
+    }).join('\n');
+
+    const prompt = `Você atua como um pre-rankeador de banco de dados.
+Sua missão: Cruze a descrição da busca/foto recebida com a lista candidata de produtos do nosso estoque. Foque estritamente nas características físicas e de formato (ex: se é redondo, quadrado, haste solta, cor, acabamento).
+Retorne APENAS os IDs numéricos dos 5 produtos que mais se assemelham à descrição. Separe os IDs por vírgula e NÃO forneça nenhuma outra explicação ou texto além da lista de IDs.
+Se houver menos de 5 parecidos, retorne os que houverem.
+
+[Descrição da Foto/Busca]: ${visualDescription}
+
+[Lista de Produtos do Estoque]:
+${itemsListTxt}`;
+
+    try {
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            systemInstruction: { parts: [{ text: "Processador de Dados. Responda ESTRITAMENTE com os IDs separados por vírgula. Zero conversação." }] }
+        });
+
+        const rawText = result.response.text().trim();
+        const ids = rawText.match(/\d+/g) || [];
+
+        if (ids.length === 0) {
+            console.log("[Semantic Pre-Ranking] Nenhum ID numérico detectado na resposta da IA. Retornando os 5 primeiros padroes.");
+            return contextItems.slice(0, 5);
+        }
+
+        const refinedItems = [];
+        const seenCodes = new Set();
+
+        // 1. Prioriza os que a IA escolheu
+        for (const id of ids) {
+            const found = contextItems.find(c => {
+                const item = c.item || c;
+                const code = item['código'] || item['codigo'] || item.Codigo;
+                return code && code.toString() === id.toString();
+            });
+
+            if (found) {
+                const uniqueCode = (found.item || found)['código'] || (found.item || found)['codigo'] || (found.item || found).Codigo;
+                if (!seenCodes.has(uniqueCode)) {
+                    seenCodes.add(uniqueCode);
+                    refinedItems.push(found);
+                }
+            }
+        }
+
+        // 2. Completa com os itens do topo do Fuse.js caso a IA não retorne 5 (Garante o fluxo de amostragem)
+        for (const c of contextItems) {
+            if (refinedItems.length >= 5) break;
+            const item = c.item || c;
+            const uniqueCode = item['código'] || item['codigo'] || item.Codigo;
+            if (uniqueCode && !seenCodes.has(uniqueCode)) {
+                seenCodes.add(uniqueCode);
+                refinedItems.push(c);
+            }
+        }
+
+        console.log(`[Semantic Pre-Ranking] Sucesso! Filtrou as opções do DB para: ${refinedItems.map(r => (r.item || r)['código'] || (r.item || r).Codigo).join(', ')}`);
+        return refinedItems.slice(0, 5);
+
+    } catch (e) {
+        console.error("Erro no Semantic Pre-Ranking:", e);
+        return contextItems.slice(0, 5); // Fallback seguro
+    }
+}
+
 module.exports = {
     generateResponse,
     transcribeAudio,
     extractImageKeywords,
     verifyProductImageWithCatalog,
     expandSearchQuery,
-    classifyIntent
+    classifyIntent,
+    semanticPreRanking
 };
