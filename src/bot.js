@@ -406,11 +406,39 @@ async function setupEvents() {
                             const visualConfirm = await aiService.verifyProductImageWithCatalog(lastMedia, combinedText, candidatesLocal);
 
                             if (visualConfirm) {
-                                // O Oráculo aprovou um dos códigos exatos ou uma peça específica!
-                                // Refaz a busca focada nessa string/código matador
-                                console.log(`[Verificação Visual] Sucesso! Nova Query Focada: "${visualConfirm}"`);
-                                stockContext = await stockService.searchProduct([visualConfirm]);
-                                finalVisualKeyword = visualConfirm;
+                                console.log(`[Verificação Visual] Sucesso! Código do Hospedeiro: "${visualConfirm}"`);
+
+                                // Bug Fix: O Paradoxo do Acessório (Fluxo de 2 Passos)
+                                // Se o usuário digitou palavras de peça nas legendas/histórico, redireciona a busca
+                                const isComponentQuery = /resistência|resistencia|reparo|refil|cartucho|peça|peca/i.test(combinedText);
+
+                                if (isComponentQuery) {
+                                    // 1. Busca o nome do Hospedeiro (ex: Ducha Acqua Duo)
+                                    const hostProductData = await stockService.searchProduct([visualConfirm]);
+                                    let hostName = "Chuveiro/Torneira"; // Fallback
+
+                                    if (hostProductData && hostProductData.length > 0) {
+                                        const exactHost = hostProductData.find(p => {
+                                            const code = (p.item || p)['código'] || (p.item || p)['codigo'] || (p.item || p).Codigo;
+                                            return code && code.toString() === visualConfirm.toString();
+                                        });
+                                        if (exactHost) {
+                                            hostName = (exactHost.item || exactHost)['modelo/produto'] || (exactHost.item || exactHost).Produto;
+                                        }
+                                    }
+
+                                    // 2. Monta a nova string e busca a Peça referenciando o Hospedeiro
+                                    const componentQuery = `Resistência Reparo ${hostName}`;
+                                    console.log(`[Verificação Visual] Intenção de Peça detectada. Redirecionando busca para: "${componentQuery}"`);
+                                    stockContext = await stockService.searchProduct([componentQuery]);
+                                    finalVisualKeyword = componentQuery;
+
+                                } else {
+                                    // Fluxo Padrão: Busca exatamente o EAN visualizado
+                                    stockContext = await stockService.searchProduct([visualConfirm]);
+                                    finalVisualKeyword = visualConfirm;
+                                }
+
                             } else {
                                 console.log(`[Verificação Visual] Nenhuma correspondência exata nos gabaritos (Oráculo retornou NENHUM). Abortando IA Final.`);
 
@@ -420,7 +448,7 @@ async function setupEvents() {
                                 await sock.sendMessage(jid, { text: fallbackMsg });
 
                                 // Update history for context
-                                await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'bot', content: fallbackMsg } });
+                                await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: fallbackMsg } }); // Fix Bug: save as 'model', not 'bot'
 
                                 // Prevent calling the Final LLM by returning early
                                 if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
@@ -434,23 +462,25 @@ async function setupEvents() {
                     console.log(`[Intent Router] Intenção de 'FAQ' detectada. Ignorando consulta de db/estoque.`);
                 }
 
-                // Feature 9: Category Triage Fallback (Evitar handoff imediato para itens genéricos)
+                // O Fluxo Definitivo de Triagem e Handoff (Hardcoded / 3 Passos)
+
+                // Passo B: Triage Bypass (Se a busca principal falhou)
                 if (intent === 'SEARCH' && (!stockContext || stockContext.length === 0)) {
-                    console.log(`[Busca Categoria] Estoque zerado para a busca. Tentando triagem genérica de categoria...`);
+                    console.log(`[Busca Categoria] Estoque zerado para a Busca Principal. Tentando Triagem Genérica (Passo B)...`);
                     const categoryMatch = await stockService.searchCategory(searchKeywords);
 
                     if (categoryMatch) {
                         const perguntas = categoryMatch['perguntas_recomendadas'] || categoryMatch['perguntas recomendadas'] || categoryMatch.perguntas;
                         if (perguntas) {
-                            console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Assumindo controle e bypassando IA...`);
+                            console.log(`[Triagem Ativada] Categoria '${categoryMatch['categoria_geral']}' detectada. Assumindo controle e BYPASSANDO a IA Final...`);
 
                             // Pega a primeira pergunta separada por quebra de linha ou instrução direta
                             const perguntasArray = perguntas.split(/(?:\r?\n|;)/).map(p => p.trim()).filter(Boolean);
                             const perguntaSelecionada = perguntasArray[0] || perguntas;
 
-                            const fallbackText = `Temos ${categoryMatch['categoria_geral']} sim! ${perguntaSelecionada}\n\n*(Já vou chamar um atendente para te ajudar com isso, só um segundo!)*`;
+                            const fallbackText = `Temos opções de ${categoryMatch['categoria_geral']} sim! ${perguntaSelecionada}\n\n*(Já vou chamar um atendente para te ajudar com isso, só um segundo!)*`;
 
-                            // 1. Salva a mensagem original do usuário pra não perder histórico
+                            // 1. Salva a mensagem original do usuário
                             await prisma.chatHistory.create({
                                 data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
                             });
@@ -459,7 +489,7 @@ async function setupEvents() {
                             await sock.sendPresenceUpdate('composing', jid);
                             await new Promise(resolve => setTimeout(resolve, 1500));
 
-                            // 3. Envia a resposta seca hardcoded
+                            // 3. Envia a resposta seca hardcoded DIRETO pelo Baileys
                             await sock.sendMessage(jid, { text: fallbackText });
 
                             // 4. Salva a resposta do Bot
@@ -467,16 +497,47 @@ async function setupEvents() {
                                 data: { phoneNumber: headers, role: 'model', content: fallbackText }
                             });
 
-                            // 5. Congela a IA e Repassa pro Atendente (Handoff)
+                            // 5. Congela a IA e Repassa pro Atendente (Handoff Silencioso)
                             userPausedStates.set(jid, getBrazilDateString());
                             metricsService.incrementHandoff();
 
-                            return; // 🛑 ABORTA aqui, garantindo que NÃO CHAME o aiService.generateResponse
+                            return; // 🛑 ABORTA AQUI! O aiserice.generateResponse NUNCA será chamado.
                         }
                     }
+
+                    // Passo C: Handoff Real (Genuíno 0 Resultados)
+                    console.log(`[Handoff Hardcoded] Busca Principal = 0 e Triagem Geral = 0. Acionando Transbordo imediato (Passo C)...`);
+
+                    // Salva a mensagem do user antes de abortar
+                    await prisma.chatHistory.create({
+                        data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
+                    });
+
+                    await sock.sendPresenceUpdate('composing', jid);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                    let handoffMsg = "";
+                    if (isOpen()) {
+                        handoffMsg = "Vou repassar para um atendente verificar isso certinho para você, só um segundo.";
+                    } else {
+                        handoffMsg = "Deixei sua dúvida anotada! Como nossa loja já fechou hoje, um atendente humano vai te responder assim que abrirmos amanhã às 08h.";
+                    }
+
+                    await sock.sendMessage(jid, { text: handoffMsg });
+
+                    await prisma.chatHistory.create({
+                        data: { phoneNumber: headers, role: 'model', content: handoffMsg }
+                    });
+
+                    userPausedStates.set(jid, getBrazilDateString());
+                    metricsService.incrementHandoff();
+
+                    return; // 🛑 ABORTA AQUI! O aiserice.generateResponse NUNCA será chamado.
                 }
 
-                // 4. Generate Response & 5. Send Response
+                // Passo A: IA Conversacional Normal (Há resultados no Estoque)
+                // Se chegou até aqui, stockContext tem > 0 itens OU é intent FAQ. A IA Final entra em cena.
+
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
 
                 const onWait = async (waitTime) => {

@@ -251,12 +251,10 @@ async function verifyProductImageWithCatalog(originalMedia, originalText, candid
         // Monta o prompt
         let promptText = `O cliente enviou a primeira foto para o WhatsApp da nossa ferragem perguntando: "${originalText}".\n\n`;
         promptText += `Eu, como sistema do estoque, consegui resgatar ${candidates.length} fotos dos produtos que mais se assemelham ao que ele pediu, lendo nossa prateleira.\n\n`;
-        promptText += `Sua missão como 'Oráculo Master': Olhe a foto do cliente e compare com o nosso GABARITO (as fotos de estoque anexadas abaixo). Me diga se o cliente quer:\n`;
-        promptText += `A) Comprar exatamente a Máquina/Objeto de um dos Gabaritos.\n`;
-        promptText += `B) Comprar uma Peça de Manutenção/Reposição (ou o refil) para a Máquina/Objeto de um dos Gabaritos que está quebrado/velho.\n\n`;
-        promptText += `AÇÃO EXTREMAMENTE TOLERANTE: As fotos de referência (gabaritos) são fotos de catálogo e podem ter fundos de cores sólidas (ex: vermelho, branco, transparente). A foto do usuário é real, com fundos sujos, azulejos, ângulos tortos e até água caindo. IGNORE COMPLETAMENTE o fundo, a cor do cenário e a água. Foque 100% na silhueta do produto, formato do espalhador, hastes e curvas. Se a silhueta geométrica bater, confirme a correspondência, mesmo que o ângulo esteja diferente. Não procure por cópias perfeitas.\n\n`;
-        promptText += `Se a resposta for A, me retorne APENAS o CÓDIGO EXATO (os números) do gabarito correspondente. Mais nada.\n`;
-        promptText += `Se a resposta for B, me retorne APENAS a string de busca para a peça necessária MAIS a frase inteira do produto gabarito (Ex: 'resistencia chuveiro zagonel optima').\n`;
+        promptText += `Sua missão como 'Oráculo Master': Olhe a foto do cliente e compare com o nosso GABARITO (as fotos de estoque anexadas abaixo). Me diga qual é O PRODUTO PRINCIPAL (o hospedeiro) da foto corporificada.\n`;
+        promptText += `Mesmo que o cliente peça uma peça de reposição ("resistência", "refil"), VOCÊ DEVE me indicar qual o CHUVEIRO/MÁQUINA/HOSPEDEIRO inteiro que está batendo com a foto, e nunca tentar adivinhar qual é a pecinha interna solta.\n\n`;
+        promptText += `AÇÃO EXTREMAMENTE TOLERANTE: As fotos de referência (gabaritos) são fotos de catálogo e podem ter fundos de cores sólidas. A foto do usuário é real, com fundos sujos, azulejos, ângulos tortos. IGNORE COMPLETAMENTE o fundo. Foque 100% na silhueta do produto hospedeiro principal.\n\n`;
+        promptText += `Me retorne APENAS o CÓDIGO EXATO (os números) do gabarito correspondente ao produto hospedeiro. Mais nada.\n`;
         promptText += `Se definitivamente não tiver NDA a ver (não é nenhum dos gabaritos), retorne a palavra "NENHUM".\n\n`;
         promptText += `--- GABARITOS ---\n`;
 
@@ -413,8 +411,8 @@ ${itemsListTxt}`;
         });
 
         const rawText = result.response.text().trim();
-        // Bug Fix: Faz split por vírgula e garante que extraiu apenas as strings limpas
-        const ids = rawText.split(',').map(s => s.trim().match(/\d+/)?.[0]).filter(Boolean);
+        // Bug Fix: Regex estrito para capturar apenas blocos numéricos de 7 a 14 dígitos (EANs) ignorando lixo Markdown/Texto
+        const ids = rawText.match(/\d{7,14}/g) || [];
 
         if (ids.length === 0) {
             console.log("[Semantic Pre-Ranking] Nenhum ID numérico detectado na resposta da IA. Retornando os 5 primeiros padroes.");
