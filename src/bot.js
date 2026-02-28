@@ -43,13 +43,13 @@ function getBrazilTime() {
 
 function normalizeJid(jid) {
     if (!jid) return '';
-    let number = jid.split('@')[0];
+    let number = jid.split('@')[0].replace(/[^0-9]/g, '');
     // Se for Brasil (55) e tiver 13 dígitos (ex: 55 51 9 9999 9999)
     if (number.startsWith('55') && number.length === 13) {
         // Remove o 9º dígito (caractere no índice 4) -> 55 51 9999 9999
         number = number.slice(0, 4) + number.slice(5);
     }
-    return `${number}@s.whatsapp.net`;
+    return number; // Retorna o número puro sem domínio para validações e logs
 }
 
 function isHoliday() {
@@ -196,12 +196,14 @@ async function setupEvents() {
         // Edge Case 1: Filtro de Deleção/ProtocolMessage para evitar Crash
         if (msg.message?.protocolMessage || msg.message?.senderKeyDistributionMessage) return;
 
-        // Recupera o JID puro mas envia ao Normalizador BR
         const rawJid = msg.key.remoteJid;
         if (!rawJid || rawJid.includes('@g.us') || rawJid === 'status@broadcast') return;
 
-        const jid = normalizeJid(rawJid);
-        const headers = jid.split('@')[0];
+        // O Baileys precisa do JID original (@lid ou @s.whatsapp.net) para conseguir responder a mensagem
+        const jid = rawJid;
+
+        // O restante das operações (banco de dados, whitelist, timeouts) usa a raiz numérica pura
+        const headers = normalizeJid(rawJid);
 
         // Edge Case 8: Tratamento do 'fromMe' (Atendente Web)
         if (msg.key.fromMe) {
@@ -243,13 +245,13 @@ async function setupEvents() {
         }
 
         const allowedNumbers = server.getAllowedNumbers();
-        // 2. Normalização Bilateral da Whitelist
-        const isAdmin = allowedNumbers.some(num => normalizeJid(num).split('@')[0] === headers);
+        // 2. Normalização Bilateral da Whitelist (Garante extração bruta de números)
+        const isAdmin = allowedNumbers.some(num => normalizeJid(num) === headers);
 
         if (server.isTestMode()) {
             if (!isAdmin) {
                 // 3. Log de Rejeição do Modo de Teste
-                console.log(`[Modo Teste] Mensagem ignorada. Número não autorizado: ${headers} (Original: ${rawJid})`);
+                console.log(`[Modo Teste] Ignorado: ${headers} (Original: ${rawJid})`);
                 return;
             }
         }
