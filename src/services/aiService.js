@@ -150,11 +150,8 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
 
             // If it's the last attempt, return fallback
             if (attempt === MAX_RETRIES) {
-                // Fallback simples se a IA falhar totalmente
-                return {
-                    text: "No momento nossos sistemas estão sobrecarregados devido a alta demanda. Por favor, tente novamente em alguns instantes ou entre em contato com nosso atendimento humano.",
-                    needsHandoff: false
-                };
+                // Ao retornar o throw, o bot.js vai capturar e anunciar o Timeout Fallback
+                throw new Error(`[AI Timeout] Limite de ${MAX_RETRIES} tentativas alcançado.`);
             }
 
             // Check if retryable (429 or 503)
@@ -323,27 +320,17 @@ Exemplo 2 (Mudando Assunto): ["cimento cp2", "cimento votoran"]
 Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
 
         const result = await model.generateContent(prompt);
-        let rawResponse = result.response.text().trim();
-
-        if (rawResponse.startsWith('```json')) {
-            rawResponse = rawResponse.substring(7, rawResponse.length - 3).trim();
-        } else if (rawResponse.startsWith('```')) {
-            rawResponse = rawResponse.substring(3, rawResponse.length - 3).trim();
-        }
-
-        // Bug Fix: Remove any leftover markdown code blocks to prevent JSON.parse syntax error
-        rawResponse = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
-
-        const expandedTerms = JSON.parse(rawResponse);
-        console.log(`[Query Expansion] Original: "${userMessage}" -> Expandido:`, expandedTerms);
-
-        if (Array.isArray(expandedTerms)) {
-            return expandedTerms;
-        }
-        return [userMessage];
+        const rawResponse = result.response.text();
+        // Regex para tirar os blocos de código se a IA mandar (ex ```json ["1"] ```)
+        const cleanJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const keywordsArray = JSON.parse(cleanJson);
+        console.log(`[AI Keyword Expansion] Sucesso! Termos: ${JSON.stringify(keywordsArray)}`);
+        return keywordsArray;
     } catch (e) {
-        console.error("Erro no expandSearchQuery da IA:", e);
-        return [userMessage];
+        console.error("❌ [AI Fallback] Erro na Expansão de Busca JSON:", e);
+        // Fallback seguro: Retorna a string bruta encapsulada num array se o JSON.parse quebrar
+        // ou se a API der Timeout.
+        return userMessage ? [userMessage.trim().substring(0, 50)] : [];
     }
 }
 
@@ -367,13 +354,17 @@ Retorne APENAS a string "STORE_FAQ" ou "PRODUCT_SEARCH".`;
             systemInstruction: { parts: [{ text: "Classificador de intenções estrito. Responda apenas com a tag solicitada." }] }
         });
 
-        const intent = result.response.text().trim().toUpperCase();
-        console.log(`[Intent Router] Classificação da Mensagem "${userMessage}": ${intent}`);
+        const rawResponse = result.response.text();
+        const cleanJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const answer = JSON.parse(cleanJson);
 
-        return intent.includes('STORE_FAQ') ? 'FAQ' : 'SEARCH';
+        console.log(`[AI Classification Scanner] Intenção Detectada: ${answer.intent} | Racional IA: "${answer.explanation}"`);
+
+        return answer.intent;
     } catch (e) {
-        console.error("Erro na classificação de intenção:", e);
-        return 'SEARCH'; // Default fallback = pesquisar produto
+        console.error("❌ [AI Fallback] Erro na Classificação de Intenções JSON:", e);
+        // Default silencioso se quebrar: Joga pra busca para não empatar a jornada do usuário
+        return "SEARCH";
     }
 }
 
@@ -397,8 +388,8 @@ async function semanticPreRanking(visualDescription, contextItems) {
 
     const prompt = `Você atua como um pre-rankeador de banco de dados.
 Sua missão: Cruze a descrição da busca/foto recebida com a lista candidata de produtos do nosso estoque. Foque estritamente nas características físicas e de formato (ex: se é redondo, quadrado, haste solta, cor, acabamento).
-Retorne APENAS os 5 códigos numéricos (EAN ou ID) separados por vírgula, sem texto adicional e sem blocos de código.
-Se houver menos de 5 parecidos, retorne os que houverem.
+Retorne APENAS até 8 códigos numéricos (EAN ou ID) separados por vírgula, sem texto adicional e sem blocos de código.
+Se houver menos parecidos, retorne os que houverem.
 
 [Descrição da Foto/Busca]: ${visualDescription}
 
@@ -416,8 +407,8 @@ ${itemsListTxt}`;
         const ids = rawText.match(/\d{7,14}/g) || [];
 
         if (ids.length === 0) {
-            console.log("[Semantic Pre-Ranking] Nenhum ID numérico detectado na resposta da IA. Retornando os 5 primeiros padroes.");
-            return contextItems.slice(0, 5);
+            console.log("[Semantic Pre-Ranking] Nenhum ID numérico detectado na resposta da IA. Retornando os padrões integrais.");
+            return contextItems.slice(0, 8);
         }
 
         const refinedItems = [];
@@ -440,9 +431,9 @@ ${itemsListTxt}`;
             }
         }
 
-        // 2. Completa com os itens do topo do Fuse.js caso a IA não retorne 5 (Garante o fluxo de amostragem)
+        // 2. Completa com os itens do topo do Fuse.js caso a IA não retorne 8 (Garante o fluxo de amostragem longo para o Oráculo Visual)
         for (const c of contextItems) {
-            if (refinedItems.length >= 5) break;
+            if (refinedItems.length >= 8) break;
             const item = c.item || c;
             const uniqueCode = item['código'] || item['codigo'] || item.Codigo;
             if (uniqueCode && !seenCodes.has(uniqueCode)) {
@@ -452,7 +443,8 @@ ${itemsListTxt}`;
         }
 
         console.log(`[Semantic Pre-Ranking] Sucesso! Filtrou as opções do DB para: ${refinedItems.map(r => (r.item || r)['código'] || (r.item || r).Codigo).join(', ')}`);
-        return refinedItems.slice(0, 5);
+        return refinedItems.slice(0, 8); // Passa a amostragem máxima para o Oracle Visual
+
 
     } catch (e) {
         console.error("Erro no Semantic Pre-Ranking:", e);
@@ -469,13 +461,15 @@ async function naturalizeTriageQuestion(category, rawInstructions) {
     try {
         const prompt = `O usuário está buscando um produto da categoria '${category}'.
 Sua única tarefa é formular UMA (1) pergunta rápida, direta, prestativa e amigável baseada nestas diretrizes operacionais: "${rawInstructions}".
-NÃO use vocabulário complexo. NÃO diga "bom dia/boa tarde". NÃO diga que vai repassar para um atendente. Aja como se fosse o humano da loja perguntando para afunilar o pedido.
-Exemplo ruim: "Irei repassar ao humano, mas antes me diga..."
-Exemplo excelente: "Para qual modelo de vaso seria? Saberia me dizer a cor?"`;
+LEIA AS DIRETRIZES. Escolha NO MÁXIMO 1 ou 2 perguntas cruciais. NUNCA faça um interrogatório longo. 
+SE houver uma recomendação ou dica (ex: "mandar foto" ou "trazer a peça"), você DEVE obrigatoriamente separar a sua resposta usando o delimitador exato |||. 
+NÃO use vocabulário complexo. NÃO diga "bom dia/boa tarde". NÃO diga que vai repassar para um atendente.
+Exemplo ruim: "Irei repassar ao humano, mas antes me diga qual o formato do vaso, ou me mande uma foto da peça."
+Exemplo excelente: "Para qual modelo de vaso seria? Saberia me dizer a cor? ||| Se puder mandar uma foto da peça, ajuda bastante!"`;
 
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            systemInstruction: { parts: [{ text: "Você é um atendente rápido de WhatsApp transformando instruções engessadas em perguntas naturais." }] }
+            systemInstruction: { parts: [{ text: "Você é um atendente rápido de WhatsApp transformando instruções engessadas em perguntas naturais limitadas a 2. Use ||| apenas para separar recomendações de envio de mídia." }] }
         });
 
         const naturalText = result.response.text().trim();

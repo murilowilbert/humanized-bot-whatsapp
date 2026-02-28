@@ -92,6 +92,32 @@ async function getCachedSheetData() {
 }
 
 /**
+ * Força a atualização do Cache ignorando o TTL
+ */
+async function forceRefreshCache() {
+    console.log("[Google Sheets] Comando manual recebido: Forçando recarregamento das planilhas...");
+    lastCacheTime = 0;
+    lastCategoryCacheTime = 0;
+    const resPrincipal = await getCachedSheetData();
+    const resCategoria = await getCachedCategoryData();
+    return { principal: resPrincipal ? resPrincipal.length : 0, categoria: resCategoria ? resCategoria.length : 0 };
+}
+
+/**
+ * Inicia o Auto-Refresh em Background. Deve ser invocado apenas uma vez.
+ */
+function startAutoRefresh(intervalMs = 45 * 60 * 1000) { // Default 45 mins
+    console.log(`[Google Sheets] Auto-Refresh configurado para a cada ${intervalMs / 60000} minutos.`);
+    setInterval(async () => {
+        console.log(`[Google Sheets] 🔄 Auto-Refresh Acionado! Atualizando caches em background...`);
+        lastCacheTime = 0;
+        lastCategoryCacheTime = 0;
+        await getCachedSheetData();
+        await getCachedCategoryData();
+    }, intervalMs);
+}
+
+/**
  * Busca por palavras-chaves nos itens dinâmicos do Google Sheets
  * @param {Array<string>|string} keywordsArray Pode ser String crua ou Array expandido da IA
  */
@@ -245,5 +271,7 @@ module.exports = {
     searchProductInSheet,
     searchCategoryInSheet,
     getCachedSheetData,
-    getCachedCategoryData
+    getCachedCategoryData,
+    forceRefreshCache,
+    startAutoRefresh
 };
