@@ -222,6 +222,26 @@ async function setupEvents() {
         // Renomeia cleanId para headers para manter compatibilidade com o resto do código
         const headers = cleanId;
 
+        // 0.3 Global Override for "Reiniciar"
+        const lowerText = textContent.trim().toLowerCase();
+        if (isAdmin && (lowerText === 'reiniciar' || lowerText === 'restart')) {
+            console.log(`[Global Override] Comando Reiniciar detectado por ${headers}. Limpando estados...`);
+            userSessions.delete(jid);
+            userPausedStates.delete(jid);
+            userIsProcessing.delete(jid);
+
+            if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
+            if (userProcessingTimers.has(jid)) clearTimeout(userProcessingTimers.get(jid));
+            if (interactionTimeouts.has(jid)) {
+                clearTimeout(interactionTimeouts.get(jid));
+                interactionTimeouts.delete(jid);
+            }
+
+            await prisma.chatHistory.deleteMany({ where: { phoneNumber: headers } });
+            await sock.sendMessage(jid, { text: "♻️ Sessão reiniciada com sucesso. Memória e estados da Máquina foram apagados." });
+            return;
+        }
+
         // Edge Case 8: Tratamento do 'fromMe' (Atendente Web)
         if (msg.key.fromMe) {
             const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
@@ -256,26 +276,6 @@ async function setupEvents() {
         // 0.2 Check Power & Test Mode
         if (!server.isBotEnabled()) {
             console.log("Bot desligado. Ignorando.");
-            return;
-        }
-
-        // 0.3 Global Override for "Reiniciar"
-        const lowerText = textContent.trim().toLowerCase();
-        if (isAdmin && (lowerText === 'reiniciar' || lowerText === 'restart')) {
-            console.log(`[Global Override] Comando Reiniciar detectado por ${headers}. Limpando estados...`);
-            userSessions.delete(jid);
-            userPausedStates.delete(jid);
-            userIsProcessing.delete(jid);
-
-            if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
-            if (userProcessingTimers.has(jid)) clearTimeout(userProcessingTimers.get(jid));
-            if (interactionTimeouts.has(jid)) {
-                clearTimeout(interactionTimeouts.get(jid));
-                interactionTimeouts.delete(jid);
-            }
-
-            await prisma.chatHistory.deleteMany({ where: { phoneNumber: headers } });
-            await sock.sendMessage(jid, { text: "♻️ Sessão reiniciada com sucesso. Memória e estados da Máquina foram apagados." });
             return;
         }
 
@@ -527,15 +527,20 @@ async function setupEvents() {
                 const intent = await aiService.classifyIntent(searchKeywords);
 
                 let categoryMatch = null;
-                if (intent === 'SEARCH') {
-                    expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
-                    // MANDATORY BYPASS: First, check if this is a generic Category Search BEFORE drilling down the product table.
-                    categoryMatch = await stockService.searchCategory(expandedQueryArray.concat(searchKeywords));
-                }
-
-                // IF NOT CATEGORY OR IF NOT SEARCH, IT JUMPS TO STOCK EVALUATION DOWN BELOW
                 let stockContext = [];
                 let finalVisualKeyword = null;
+
+                if (intent === 'SEARCH') {
+                    expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
+
+                    // Passo A: Busca estrita no cachePrincipal
+                    stockContext = await stockService.searchProduct(expandedQueryArray.concat(searchKeywords));
+
+                    // Passo B: SOMENTE SE o Passo A retornar 0 itens, inicie a busca no cacheGeral
+                    if (!stockContext || stockContext.length === 0) {
+                        categoryMatch = await stockService.searchCategory(expandedQueryArray.concat(searchKeywords));
+                    }
+                }
 
                 if (intent === 'SEARCH') {
                     // Feature 8: Visual Verification com Gabarito (Oracle Master)
@@ -640,7 +645,7 @@ async function setupEvents() {
 
                 // O Fluxo Definitivo de Triagem e Handoff (Hardcoded / 3 Passos)
 
-                // Passo B (Agora Mandatory First Pass): Triage Bypass (Verificação de Categoria Geral antes da Tabela Específica)
+                // Passo B (Fallback): Triage Bypass (Verificação de Categoria Geral na falta de produtos)
                 if (intent === 'SEARCH' && categoryMatch) {
                     const perguntas = categoryMatch['perguntas_recomendadas'] || categoryMatch['perguntas recomendadas'] || categoryMatch.perguntas;
                     if (perguntas) {
