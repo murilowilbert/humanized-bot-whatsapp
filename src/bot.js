@@ -365,15 +365,20 @@ async function setupEvents() {
                     orderBy: { createdAt: 'asc' },
                     take: 20
                 });
-                const chatsHistory = historyRecords.map(r => ({ role: r.role, content: r.content }));
+
+                // Amnésia de 36 horas (Time-To-Live)
+                const ttlLimit = Date.now() - (36 * 60 * 60 * 1000);
+                const recentRecords = historyRecords.filter(r => new Date(r.createdAt).getTime() > ttlLimit);
+
+                const chatsHistory = recentRecords.map(r => ({ role: r.role, content: r.content }));
 
                 // Inteligência Artificial: Query Expansion
                 // Transforma a intenção em um array rico de sinônimos técnicos
                 let searchKeywords = combinedText;
                 let recentHistory = [];
 
-                if (historyRecords.length > 0) {
-                    recentHistory = historyRecords.slice(-6).map(r => ({ role: r.role, content: r.content }));
+                if (recentRecords.length > 0) {
+                    recentHistory = recentRecords.slice(-6).map(r => ({ role: r.role, content: r.content }));
                 }
 
                 if (lastMedia && lastMedia.mimeType.startsWith('image/')) {

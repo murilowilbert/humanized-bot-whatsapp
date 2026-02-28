@@ -123,12 +123,13 @@ async function searchProductInSheet(keywordsArray) {
     // Configuração do Fuse.js
     const options = {
         includeScore: true,
-        threshold: 0.4, // Grau de Fuzzy (0.0 é exato, 1.0 acha qualquer coisa)
+        threshold: 0.3, // Grau de Fuzzy mais estrito para evitar falsos positivos
         ignoreLocation: true,
         keys: [
-            { name: 'modelo/produto', weight: 0.6 },
-            { name: 'tags para busca (sinônimos)', weight: 0.3 },
-            { name: 'características principais', weight: 0.1 },
+            { name: 'modelo/produto', weight: 1.0 },
+            { name: 'tags para busca (sinônimos)', weight: 0.9 },
+            { name: 'categoria', weight: 0.8 },
+            { name: 'características principais', weight: 0.3 },
             { name: 'código', weight: 0.9 },
             { name: 'codigo', weight: 0.9 },
             { name: 'ean', weight: 0.9 }

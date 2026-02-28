@@ -71,6 +71,7 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
             const todayStr = `Hoje é ${capitalizedWeekday}, ${dateFormatter.format(now)} e o horário atual é ${timeFormatter.format(now)}.`;
 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
+                "- REGRA ANTI-LOOP (ABSOLUTA): Verifique o histórico de mensagens. Se VOCÊ acabou de fazer uma pergunta de afunilamento na mensagem anterior e o USUÁRIO acabou de RESPONDER a essa preferência, VOCÊ É ESTRITAMENTE PROIBIDO de fazer uma nova pergunta genérica. Você DEVE cruzar a resposta do usuário com os [ESTOQUE ATUALIZADO], selecionar as 2 ou 3 opções que melhor atendem ao pedido, informar os preços diretamente e explicar brevemente a diferença entre elas.\n" +
                 "- FOTOS DO CLIENTE: O sistema já leu a imagem e injetou os possíveis produtos no estoque. AJA NATURALMENTE. NUNCA use frases robóticas como 'Com base na foto', 'Analisando a imagem', 'O sistema identificou', etc. Apenas assuma que você viu a foto e vá direto ao ponto (ex: 'Sim, nós temos a Ducha Ducali por...').\n" +
                 (isFullStockEnabled
                     ? "- ESTOQUE VAZIO: NUNCA diga 'Nosso estoque indica Produto não encontrado'. Diga apenas 'Pior que não tenho essa marca no momento' ou ofereça um similar amigavelmente.\n"
