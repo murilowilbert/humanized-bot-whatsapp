@@ -450,7 +450,7 @@ async function setupEvents() {
 
         // 4. Start Debounce Timer
         const processQueue = async () => {
-            console.log(`[Debounce Concluído] Iniciando processamento para: ${jid}`);
+            console.log(`[Debounce Acionado] Iniciando roteamento para o JID: ${jid}`);
             userProcessingTimers.delete(jid);
 
             // Se já estivermos processando algo proscrito pela fila anterior (AI demorando)
@@ -915,6 +915,10 @@ async function setupEvents() {
                 userIsProcessing.delete(jid); // Destrava!
             }
         }; // Fim da func processQueue
+
+        // Engatilha a execução da Fila Pós-Debounce (5 segundos de Inatividade)
+        userProcessingTimers.set(jid, setTimeout(processQueue, 5000));
+
     }); // Fim do sock.ev.on('messages.upsert')
 }
 
