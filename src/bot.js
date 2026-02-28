@@ -184,6 +184,15 @@ async function setupEvents() {
 
         const msg = m.messages[0];
 
+        // Ensure text extraction from Baileys structure
+        let textContent = msg.message?.conversation ||
+            msg.message?.extendedTextMessage?.text ||
+            msg.message?.imageMessage?.caption ||
+            '';
+
+        // 1. Visibilidade Absoluta (Log no Topo)
+        console.log(`[Raw Upsert] Recebido de ${msg.key?.remoteJid}: "${textContent}"`);
+
         // Edge Case 1: Filtro de Deleção/ProtocolMessage para evitar Crash
         if (msg.message?.protocolMessage || msg.message?.senderKeyDistributionMessage) return;
 
@@ -213,12 +222,6 @@ async function setupEvents() {
 
         const pushname = msg.pushName || 'Cliente';
 
-        // Ensure text extraction from Baileys structure
-        let textContent = msg.message.conversation ||
-            msg.message.extendedTextMessage?.text ||
-            msg.message.imageMessage?.caption ||
-            '';
-
         // Edge Case 2 & 9: Middleware de Pausa (Handoff) com Inatividade TTL 6H
         if (userPausedStates.has(jid)) {
             const pausedTimestamp = userPausedStates.get(jid);
@@ -240,11 +243,13 @@ async function setupEvents() {
         }
 
         const allowedNumbers = server.getAllowedNumbers();
-        const isAdmin = allowedNumbers.some(num => headers.includes(num));
+        // 2. Normalização Bilateral da Whitelist
+        const isAdmin = allowedNumbers.some(num => normalizeJid(num).split('@')[0] === headers);
 
         if (server.isTestMode()) {
             if (!isAdmin) {
-                console.log(`Ignorando ${headers} (Modo Teste Ativo)`);
+                // 3. Log de Rejeição do Modo de Teste
+                console.log(`[Modo Teste] Mensagem ignorada. Número não autorizado: ${headers} (Original: ${rawJid})`);
                 return;
             }
         }
