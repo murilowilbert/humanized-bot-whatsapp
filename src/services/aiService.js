@@ -355,15 +355,32 @@ Retorne APENAS a string "STORE_FAQ" ou "PRODUCT_SEARCH".`;
         });
 
         const rawResponse = result.response.text();
-        const cleanJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
-        const answer = JSON.parse(cleanJson);
 
-        console.log(`[AI Classification Scanner] Intenção Detectada: ${answer.intent} | Racional IA: "${answer.explanation}"`);
+        // 1. Higienização Prévia
+        const cleanRes = rawResponse.trim().replace(/```json|```/gi, '');
 
-        return answer.intent;
+        // 2. Fallback de String Crua (Bypass de Parse)
+        // O bot.js internamente escuta os retornos 'FAQ' e 'SEARCH'. Mapeamos a string da IA direto para eles.
+        if (cleanRes.includes('STORE_FAQ') || cleanRes === 'FAQ') {
+            console.log(`[AI Classification Scanner] Intenção Bypassed (Raw String): FAQ`);
+            return 'FAQ';
+        }
+        if (cleanRes.includes('PRODUCT_SEARCH') || cleanRes === 'SEARCH') {
+            console.log(`[AI Classification Scanner] Intenção Bypassed (Raw String): SEARCH`);
+            return 'SEARCH';
+        }
+
+        // Tenta fazer o parse caso o modelo devolva o formato antigo
+        const answer = JSON.parse(cleanRes);
+        console.log(`[AI Classification Scanner] Intenção Detectada via JSON: ${answer.intent} | Racional: "${answer.explanation || 'N/A'}"`);
+
+        if (answer.intent === 'STORE_FAQ' || answer.intent === 'FAQ') return 'FAQ';
+        return 'SEARCH';
+
     } catch (e) {
-        console.error("❌ [AI Fallback] Erro na Classificação de Intenções JSON:", e);
-        // Default silencioso se quebrar: Joga pra busca para não empatar a jornada do usuário
+        // 3. Try/Catch Seguro com Default
+        console.error("❌ [Erro Crítico Pós-Debounce] Falha na Classificação de Intenções JSON:", e);
+        // Retorna a intenção primária como default para manter o robô rodando no fluxo de estoque
         return "SEARCH";
     }
 }
