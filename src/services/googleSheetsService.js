@@ -164,24 +164,24 @@ async function searchProductInSheet(keywordsArray) {
 
     const fuse = new Fuse(data, options);
     let allResults = [];
-    const seenItems = new Set();
 
+    // Busca iterativa: em vez de strings gigantes que diluem score, buscamos termo a termo
     for (const term of searchTerms) {
         const results = fuse.search(term);
-        for (const res of results) {
-            const itemId = res.item['código'] || res.item['codigo'] || res.item['modelo/produto'];
-            if (!seenItems.has(itemId)) {
-                seenItems.add(itemId);
-                allResults.push({ item: res.item, score: res.score });
-            }
-        }
+        allResults = allResults.concat(results);
     }
 
+    // Desduplicação de resultados exata pedida
+    const uniqueResults = Array.from(new Map(allResults.map(r => {
+        const uniqueKey = r.item['ean'] || r.item['código'] || r.item['codigo'] || r.item['modelo/produto'];
+        return [uniqueKey, r];
+    })).values());
+
     // Ordena pelo menor 'score' do Fuse.js (menor = melhor match)
-    allResults.sort((a, b) => a.score - b.score);
+    uniqueResults.sort((a, b) => a.score - b.score);
 
     // Retorna no formato legado para compatibilidade: { item, matchCount }
-    return allResults.slice(0, 15).map(r => ({
+    return uniqueResults.slice(0, 15).map(r => ({
         item: r.item,
         matchCount: Math.round((1 - r.score) * 10) // Converte score invertido pra peso antigo
     }));
@@ -254,13 +254,21 @@ async function searchCategoryInSheet(keywordsArray) {
     };
 
     const fuse = new Fuse(data, options);
+    let allResults = [];
 
-    // Busca e retorna o Top 1 mais assertivo
+    // Busca iterativa de Categorias
     for (const term of searchTerms) {
         const results = fuse.search(term);
-        if (results && results.length > 0) {
-            return results[0].item;
-        }
+        allResults = allResults.concat(results);
+    }
+
+    // Desduplicação estrita:
+    const uniqueResults = Array.from(new Map(allResults.map(r => [r.item['categoria_geral'], r])).values());
+
+    uniqueResults.sort((a, b) => a.score - b.score);
+
+    if (uniqueResults && uniqueResults.length > 0) {
+        return uniqueResults[0].item;
     }
 
     return null;

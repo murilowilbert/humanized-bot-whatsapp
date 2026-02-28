@@ -436,9 +436,10 @@ async function setupEvents() {
             }
         }
 
-        // Edge Case 3: Safe-Merge Ignore Trash (menos de 2 caracteres puro)
-        if (!mediaData && textContent.length < 2 && textContent.match(/^[a-zA-Z0-9👍]$/)) {
-            console.log(`[Safe-Merge] Mensagem de apenas 1 caractere de ${headers} ignorada no buffer.`);
+        // Edge Case 3: Safe-Merge Ignore Trash (menos de 2 caracteres puro e não-numérico)
+        const strClean = textContent.trim();
+        if (!mediaData && strClean.length < 2 && !/^\d+$/.test(strClean)) {
+            console.log(`[Safe-Merge] Mensagem curta/símbolo de ${headers} ignorada no buffer: "${strClean}"`);
             return;
         }
 
@@ -534,16 +535,20 @@ async function setupEvents() {
                     expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                     // Passo A: Busca estrita no cachePrincipal
-                    // Corrige o array de busca pra ser limpo e não concatenar tudo num bolão stringurado.
-                    const cleanSearchTerms = expandedQueryArray.length > 0 ? expandedQueryArray.join(' ').replace(/\n/g, ' ') : searchKeywords.replace(/\n/g, ' ');
+                    // Corrige o array de busca pra ser limpo, SEM concatenar numa única string (evita zerar score do Fuse)
+                    let cleanSearchTermsArray = expandedQueryArray.length > 0 ? expandedQueryArray : [searchKeywords];
+                    // Adiciona a keyword principal se não estiver
+                    if (!cleanSearchTermsArray.includes(searchKeywords)) cleanSearchTermsArray.push(searchKeywords);
+                    // Remove \n de todos os itens do array
+                    cleanSearchTermsArray = cleanSearchTermsArray.map(t => t.replace(/\n/g, ' ').trim());
 
-                    console.log(`[Busca -> Tabela Principal] Pesquisando por termos: ${cleanSearchTerms}`);
-                    stockContext = await stockService.searchProduct(cleanSearchTerms);
+                    console.log(`[Busca -> Tabela Principal] Pesquisando por array de termos: [${cleanSearchTermsArray.join(', ')}]`);
+                    stockContext = await stockService.searchProduct(cleanSearchTermsArray);
 
                     // Passo B: SOMENTE SE o Passo A retornar 0 itens, inicie a busca no cacheGeral
                     if (!stockContext || stockContext.length === 0) {
-                        console.log(`[Busca -> Tabela Geral] Pesquisando por termos: ${cleanSearchTerms}`);
-                        categoryMatch = await stockService.searchCategory(cleanSearchTerms);
+                        console.log(`[Busca -> Tabela Geral] Pesquisando por array de termos: [${cleanSearchTermsArray.join(', ')}]`);
+                        categoryMatch = await stockService.searchCategory(cleanSearchTermsArray);
                     }
                 }
 
