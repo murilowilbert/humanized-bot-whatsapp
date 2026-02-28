@@ -202,7 +202,7 @@ async function setupEvents() {
                 console.log(`[Manual Override] Atendente soltou a trava (!bot) para ${headers}`);
                 await sock.sendMessage(jid, { text: "✅ Bot reativado para este chat." });
             }
-            return; // Aborta processamento de IA para todas as mensagens do atendente
+            // return; // DESATIVADO TEMPORARIAMENTE PARA TESTES DO ADMIN NO PRÓPRIO CHAT
         }
 
         // Clear existing timeout if the user sends a new message
