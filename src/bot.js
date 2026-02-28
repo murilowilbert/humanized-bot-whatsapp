@@ -190,20 +190,37 @@ async function setupEvents() {
             msg.message?.imageMessage?.caption ||
             '';
 
-        // 1. Visibilidade Absoluta (Log no Topo)
-        console.log(`[Raw Upsert] Recebido de ${msg.key?.remoteJid}: "${textContent}"`);
+        // 1. Extração Simples do ID
+        const rawJid = msg.key?.remoteJid;
+        if (!rawJid) return;
+        const cleanId = rawJid.split('@')[0];
+
+        // 2. Log Universal (Visibilidade Total)
+        const pushname = msg.pushName || 'Desconhecido';
+        console.log(`Recebido de ${pushname} (${cleanId}): ${textContent}`);
 
         // Edge Case 1: Filtro de Deleção/ProtocolMessage para evitar Crash
         if (msg.message?.protocolMessage || msg.message?.senderKeyDistributionMessage) return;
 
-        const rawJid = msg.key.remoteJid;
-        if (!rawJid || rawJid.includes('@g.us') || rawJid === 'status@broadcast') return;
+        if (rawJid.includes('@g.us') || rawJid === 'status@broadcast') return;
 
         // O Baileys precisa do JID original (@lid ou @s.whatsapp.net) para conseguir responder a mensagem
         const jid = rawJid;
 
-        // O restante das operações (banco de dados, whitelist, timeouts) usa a raiz numérica pura
-        const headers = normalizeJid(rawJid);
+        // 3. Filtro Flexível do Modo Teste
+        const allowedNumbers = server.getAllowedNumbers();
+        const isAdmin = allowedNumbers.some(num => cleanId.includes(num) || String(num).includes(cleanId));
+
+        if (server.isTestMode()) {
+            if (!isAdmin) {
+                // 4. Descarte com Log
+                console.log(`Ignorando ${cleanId} (Modo Teste Ativo)`);
+                return;
+            }
+        }
+
+        // Renomeia cleanId para headers para manter compatibilidade com o resto do código
+        const headers = cleanId;
 
         // Edge Case 8: Tratamento do 'fromMe' (Atendente Web)
         if (msg.key.fromMe) {
@@ -221,8 +238,6 @@ async function setupEvents() {
             clearTimeout(interactionTimeouts.get(jid));
             interactionTimeouts.delete(jid);
         }
-
-        const pushname = msg.pushName || 'Cliente';
 
         // Edge Case 2 & 9: Middleware de Pausa (Handoff) com Inatividade TTL 6H
         if (userPausedStates.has(jid)) {
@@ -242,18 +257,6 @@ async function setupEvents() {
         if (!server.isBotEnabled()) {
             console.log("Bot desligado. Ignorando.");
             return;
-        }
-
-        const allowedNumbers = server.getAllowedNumbers();
-        // 2. Normalização Bilateral da Whitelist (Garante extração bruta de números)
-        const isAdmin = allowedNumbers.some(num => normalizeJid(num) === headers);
-
-        if (server.isTestMode()) {
-            if (!isAdmin) {
-                // 3. Log de Rejeição do Modo de Teste
-                console.log(`[Modo Teste] Ignorado: ${headers} (Original: ${rawJid})`);
-                return;
-            }
         }
 
         // 0.3 Global Override for "Reiniciar"
