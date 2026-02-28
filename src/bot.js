@@ -41,6 +41,17 @@ function getBrazilTime() {
     return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
 }
 
+function normalizeJid(jid) {
+    if (!jid) return '';
+    let number = jid.split('@')[0];
+    // Se for Brasil (55) e tiver 13 dígitos (ex: 55 51 9 9999 9999)
+    if (number.startsWith('55') && number.length === 13) {
+        // Remove o 9º dígito (caractere no índice 4) -> 55 51 9999 9999
+        number = number.slice(0, 4) + number.slice(5);
+    }
+    return `${number}@s.whatsapp.net`;
+}
+
 function isHoliday() {
     try {
         const holidays = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/holidays.json'))).dates;
@@ -172,11 +183,27 @@ async function setupEvents() {
         if (m.type !== 'notify') return; // Ignora mensagens vindas de histórico/sincronização
 
         const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
 
-        const jid = msg.key.remoteJid;
-        // Ignore groups or status
-        if (jid.includes('@g.us') || jid === 'status@broadcast') return;
+        // Edge Case 1: Filtro de Deleção/ProtocolMessage para evitar Crash
+        if (msg.message?.protocolMessage || msg.message?.senderKeyDistributionMessage) return;
+
+        // Recupera o JID puro mas envia ao Normalizador BR
+        const rawJid = msg.key.remoteJid;
+        if (!rawJid || rawJid.includes('@g.us') || rawJid === 'status@broadcast') return;
+
+        const jid = normalizeJid(rawJid);
+        const headers = jid.split('@')[0];
+
+        // Edge Case 8: Tratamento do 'fromMe' (Atendente Web)
+        if (msg.key.fromMe) {
+            const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+            if (myMsg.trim() === '!bot') {
+                userPausedStates.delete(jid);
+                console.log(`[Manual Override] Atendente soltou a trava (!bot) para ${headers}`);
+                await sock.sendMessage(jid, { text: "✅ Bot reativado para este chat." });
+            }
+            return; // Aborta processamento de IA para todas as mensagens do atendente
+        }
 
         // Clear existing timeout if the user sends a new message
         if (interactionTimeouts.has(jid)) {
@@ -185,8 +212,6 @@ async function setupEvents() {
         }
 
         const pushname = msg.pushName || 'Cliente';
-        // Extract phone number from JID (ex: 555199999999@s.whatsapp.net -> 555199999999)
-        const headers = jid.split('@')[0];
 
         // Ensure text extraction from Baileys structure
         let textContent = msg.message.conversation ||
@@ -194,13 +219,14 @@ async function setupEvents() {
             msg.message.imageMessage?.caption ||
             '';
 
-        // Middleware de Pausa (Handoff)
-        const todayDate = getBrazilDateString();
+        // Edge Case 2 & 9: Middleware de Pausa (Handoff) com Inatividade TTL 6H
         if (userPausedStates.has(jid)) {
-            const pausedDate = userPausedStates.get(jid);
-            // Reset da pausa no dia seguinte
-            if (pausedDate !== todayDate) {
+            const pausedTimestamp = userPausedStates.get(jid);
+            const nowTime = Date.now();
+            // Permanece mudo por 6 horas (6 * 60 * 60 * 1000)
+            if (nowTime - pausedTimestamp > 21600000) {
                 userPausedStates.delete(jid);
+                console.log(`[Handoff Mute] TTL 6h Vencido. Travas liberadas para ${headers}`);
             } else {
                 console.log(`[Handoff Mute] Ignorando mensagem de ${pushname} (${headers})`);
                 return; // Ignora completamente para o humano assumir
@@ -297,6 +323,25 @@ async function setupEvents() {
             console.log(`Recebido de ${pushname} (${headers}): ${textContent} (Aguardando debounce...)`);
             metricsService.incrementMessages();
 
+            // Edge Case 7: Rate Limiting Básico (Max 6 seguidos)
+            const nowTimeLimit = Date.now();
+            if (!userSessions.has(jid)) userSessions.set(jid, { state: 'IDLE', msgCount: 0, lastMsgTime: nowTimeLimit });
+
+            const sessionObj = userSessions.get(jid);
+            if (nowTimeLimit - sessionObj.lastMsgTime < 10000) {
+                sessionObj.msgCount++;
+            } else {
+                sessionObj.msgCount = 1; // Reseta se passou de 10 seg
+            }
+            sessionObj.lastMsgTime = nowTimeLimit;
+
+            if (sessionObj.msgCount > 6) {
+                if (sessionObj.msgCount === 7) {
+                    await sock.sendMessage(jid, { text: "Opa, recebi muitas mensagens de uma vez! Por favor, aguarde alguns segundos para eu conseguir processar tudo. 🔄" });
+                }
+                return; // Bloqueio silencioso se continuar floodando
+            }
+
             // Limpa o timer anterior do usuário, se houver, pois ele digitou de novo.
             if (userProcessingTimers.has(jid)) {
                 clearTimeout(userProcessingTimers.get(jid));
@@ -328,7 +373,7 @@ async function setupEvents() {
                 await sock.sendMessage(jid, { text: docMsg });
                 await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: "Handoff por Documento" } });
 
-                userPausedStates.set(jid, getBrazilDateString());
+                userPausedStates.set(jid, Date.now());
                 metricsService.incrementHandoff();
                 return; // Aborta fluxo e impede travamento no LLM
             }
@@ -348,7 +393,8 @@ async function setupEvents() {
                     if (buffer) {
                         if (messageType === 'imageMessage') {
                             mediaData = { mimeType: msg.message.imageMessage.mimetype, data: buffer.toString('base64') };
-                            textContent = textContent || "[Foto do Usuário]";
+                            // Edge Case 2: Imagem Órfã
+                            textContent = textContent || "Pode me ajudar a identificar o modelo e as especificações deste produto na foto?";
                         } else if (messageType === 'audioMessage' || messageType === 'pttMessage') {
                             const audioMime = msg.message[messageType].mimetype;
                             mediaData = { mimeType: audioMime.split(';')[0], data: buffer.toString('base64') };
@@ -379,9 +425,16 @@ async function setupEvents() {
                 }
             }
 
+            // Edge Case 3: Safe-Merge Ignore Trash (menos de 2 caracteres puro)
+            if (!mediaData && textContent.length < 2 && textContent.match(/^[a-zA-Z0-9👍]$/)) {
+                console.log(`[Safe-Merge] Mensagem de apenas 1 caractere de ${headers} ignorada no buffer.`);
+                return;
+            }
+
             userMessageQueues.get(jid).push({
                 text: textContent,
-                media: mediaData
+                media: mediaData,
+                isAdminOverride: isAdmin && (textContent.trim().toLowerCase() === 'reiniciar' || textContent.trim().toLowerCase() === 'atualizar estoque')
             });
 
             // 4. Start Debounce Timer
@@ -430,7 +483,17 @@ async function setupEvents() {
                     const ttlLimit = Date.now() - (36 * 60 * 60 * 1000);
                     const recentRecords = historyRecords.filter(r => new Date(r.createdAt).getTime() > ttlLimit);
 
-                    const chatsHistory = recentRecords.map(r => ({ role: r.role, content: r.content }));
+                    // Edge Case 5: Context Truncation Slice(-12)
+                    let chatsHistory = recentRecords.map(r => ({ role: r.role, content: r.content }));
+                    if (chatsHistory.length > 12) {
+                        chatsHistory = chatsHistory.slice(-12);
+                    }
+
+                    // Verifica se tem comandos globais no lote
+                    if (queue.some(q => q.isAdminOverride)) {
+                        console.log(`[Safe-Merge] Comando Admin interceptado no lote de ${headers}, abortando roteamento AI...`);
+                        return;
+                    }
 
                     // Inteligência Artificial: Query Expansion
                     // Transforma a intenção em um array rico de sinônimos técnicos
