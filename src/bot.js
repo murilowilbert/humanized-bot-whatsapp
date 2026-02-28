@@ -450,6 +450,7 @@ async function setupEvents() {
 
         // 4. Start Debounce Timer
         const processQueue = async () => {
+            console.log(`[Debounce Concluído] Iniciando processamento para: ${jid}`);
             userProcessingTimers.delete(jid);
 
             // Se já estivermos processando algo proscrito pela fila anterior (AI demorando)
@@ -906,6 +907,7 @@ async function setupEvents() {
 
             } catch (error) {
                 console.error("❌ Erro ao processar resposta da IA:", error);
+                console.error("[Erro Crítico Pós-Debounce]:", error);
                 try {
                     await sock.sendMessage(jid, { text: "Desculpe, tive uma pequena instabilidade agora. Pode repetir sua dúvida?" });
                 } catch (e) { /* ignore fallback fail */ }
