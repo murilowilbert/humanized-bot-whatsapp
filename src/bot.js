@@ -534,11 +534,16 @@ async function setupEvents() {
                     expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                     // Passo A: Busca estrita no cachePrincipal
-                    stockContext = await stockService.searchProduct(expandedQueryArray.concat(searchKeywords));
+                    // Corrige o array de busca pra ser limpo e não concatenar tudo num bolão stringurado.
+                    const cleanSearchTerms = expandedQueryArray.length > 0 ? expandedQueryArray.join(' ').replace(/\n/g, ' ') : searchKeywords.replace(/\n/g, ' ');
+
+                    console.log(`[Busca -> Tabela Principal] Pesquisando por termos: ${cleanSearchTerms}`);
+                    stockContext = await stockService.searchProduct(cleanSearchTerms);
 
                     // Passo B: SOMENTE SE o Passo A retornar 0 itens, inicie a busca no cacheGeral
                     if (!stockContext || stockContext.length === 0) {
-                        categoryMatch = await stockService.searchCategory(expandedQueryArray.concat(searchKeywords));
+                        console.log(`[Busca -> Tabela Geral] Pesquisando por termos: ${cleanSearchTerms}`);
+                        categoryMatch = await stockService.searchCategory(cleanSearchTerms);
                     }
                 }
 
@@ -579,11 +584,15 @@ async function setupEvents() {
 
                         if (candidatesLocal.length > 0) {
                             // Dedo-duro do Oracle para acompanhamento de log/avaliação
-                            const nomesGabaritos = candidatesLocal.map((c, i) => `${i + 1}. ${c.name}`).join(", ");
+                            const nomesGabaritos = candidatesLocal.map((c, i) => `${i + 1}. ${c.name} (${c.code})`).join(", ");
                             console.log(`[Verificação Visual] Avaliando gabaritos: ${nomesGabaritos}`);
 
                             await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
                             console.log(`[Verificação Visual] Oráculo acionado com ${candidatesLocal.length} gabaritos disponíveis.`);
+
+                            // Log explícito do Payload para Auditoria
+                            console.log('[Oráculo Payload] Montado:', JSON.stringify(candidatesLocal.map(c => ({ code: c.code, name: c.name, hasImage: !!c.localImageBase64 })), null, 2));
+
                             const visualConfirm = await aiService.verifyProductImageWithCatalog(lastMedia, combinedText, candidatesLocal);
 
                             if (visualConfirm) {

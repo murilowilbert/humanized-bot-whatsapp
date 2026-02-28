@@ -248,6 +248,7 @@ async function verifyProductImageWithCatalog(originalMedia, originalText, candid
     try {
         // Monta o prompt
         let promptText = `O cliente enviou a primeira foto para o WhatsApp da nossa ferragem perguntando: "${originalText}".\n\n`;
+        promptText += `Você é um auditor visual implacável. COMPARE estritamente as características físicas da foto do usuário (curvaturas, espessura, formato da base e do espalhador) com as URLs de imagem ou dados numéricos fornecidos nas opções abaixo. Você NÃO PODE deduzir apenas pelo texto. Se a imagem do usuário for plana/slim, não selecione um modelo com base cilíndrica. Retorne APENAS o código/EAN da correspondência visual exata. Se nenhuma foto/item corresponder EXATAMENTE ao design físico (ou for muito duvidoso), retorne ESTRITAMENTE a palavra NENHUM.\n\nEstas são as ${candidates.length} opções pré-selecionadas do nosso banco de dados:\n`;
         promptText += `Eu, como sistema do estoque, consegui resgatar ${candidates.length} fotos dos produtos que mais se assemelham ao que ele pediu, lendo nossa prateleira.\n\n`;
         promptText += `Sua missão como 'Oráculo Master': Olhe a foto do cliente e compare com o nosso GABARITO (as fotos de estoque anexadas abaixo). Me diga qual é O PRODUTO PRINCIPAL (o hospedeiro) da foto corporificada.\n`;
         promptText += `Mesmo que o cliente peça uma peça de reposição ("resistência", "refil"), VOCÊ DEVE me indicar qual o CHUVEIRO/MÁQUINA/HOSPEDEIRO inteiro que está batendo com a foto, e nunca tentar adivinhar qual é a pecinha interna solta.\n\n`;
@@ -344,6 +345,7 @@ async function classifyIntent(userMessage) {
         const prompt = `Classifique a seguinte mensagem do cliente em uma das duas categorias:
 1. "STORE_FAQ": Perguntas gerais da loja (horário de funcionamento, endereço, localização física, se tem tele-entrega, formas de pagamento) ou saudações muito básicas desvinculadas de produtos ("bom dia", "olá", "tudo bem").
 2. "PRODUCT_SEARCH": Qualquer tentativa de encontrar, comprar, perguntar o preço ou saber informações sobre produtos mecânicos, elétricos, hidráulicos, tintas ou consertos ("tem chuveiro?", "qual o preço da torneira?", "cimento", "cano pvc").
+SE o usuário enviar apenas uma palavra, um nome solto, uma marca ou um modelo de produto (ex: optima, zagonel, parafuso), a intenção DEVE ser ESTRITAMENTE PRODUCT_SEARCH. Use STORE_FAQ APENAS para perguntas claras sobre horário, localização, telefone ou formas de pagamento.
 
 Mensagem: "${userMessage}"
 
@@ -459,7 +461,10 @@ ${itemsListTxt}`;
             }
         }
 
-        console.log(`[Semantic Pre-Ranking] Sucesso! Filtrou as opções do DB para: ${refinedItems.map(r => (r.item || r)['código'] || (r.item || r).Codigo).join(', ')}`);
+        console.log(`[Semantic Pre-Ranking] Sucesso! Filtrou as opções do DB para: ${refinedItems.map(r => {
+            const item = r.item || r;
+            return item['código'] || item['codigo'] || item['ean'] || item.Codigo || item['modelo/produto'] || item.Produto || 'N/A';
+        }).join(', ')}`);
         return refinedItems.slice(0, 8); // Passa a amostragem máxima para o Oracle Visual
 
 
