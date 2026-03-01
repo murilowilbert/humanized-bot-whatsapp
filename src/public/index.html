@@ -1,189 +1,179 @@
 <!DOCTYPE html>
 <html lang="pt-BR" class="dark">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;">
-    <title>Painel Ferragem Marlene</title>
+    <title>Painel Admin Hyper-Density</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        success: '#10b981',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                        'text-main': 'var(--text-main)',
+                        'text-muted': 'var(--text-muted)',
+                        'card-bg': 'var(--card-bg)',
+                        'glass-border': 'var(--glass-border)'
+                    }
+                }
+            }
+        }
+    </script>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/countup.js/2.0.8/countUp.umd.js"></script>
 </head>
+<body class="antialiased min-h-screen pb-10">
 
-<body class="bg-base">
-    <div class="container">
-        <header>
-            <div class="logo-area">
-                <i data-lucide="hammer" class="logo-icon"></i>
-                <h1>Ferragem Marlene</h1>
+    <header class="glass-header sticky top-0 z-50 px-6 py-4 mb-8">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            
+            <div class="flex items-center gap-3">
+                <i data-lucide="settings" class="spin-3d text-success w-8 h-8"></i>
+                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-400 to-gray-600 dark:from-gray-200 dark:to-white">Ferragem Marlene - Core</h1>
             </div>
-            <div class="header-controls">
-                <div id="status-badge" class="badge offline">
-                    <i data-lucide="wifi-off"></i> Desconectado
+
+            <div class="flex items-center gap-6">
+                <div id="ws-status" class="neo-inset px-4 py-1.5 flex items-center gap-2 text-sm font-semibold text-danger">
+                    <i data-lucide="wifi-off" class="w-4 h-4"></i> <span>Offline</span>
                 </div>
 
-                <button class="btn btn-primary" id="start-btn" onclick="startBot()">
-                    <i data-lucide="play"></i> Iniciar Bot
+                <button id="theme-toggle" class="neo-btn rounded-full p-2" title="Alternar Modo Escuro">
+                    <i data-lucide="moon" id="theme-icon" class="w-5 h-5"></i>
                 </button>
 
-                <button class="btn btn-danger" id="restart-btn" onclick="restartSystem()"
-                    title="Fecha bots fantasmas e inicia novo">
-                    <i data-lucide="refresh-cw"></i> Reiniciar
+                <div class="flex items-center gap-3 ml-4">
+                    <div class="flex flex-col items-center">
+                        <input type="checkbox" id="bot-toggle" class="neo-toggle" onclick="toggleBot()">
+                        <span class="text-[10px] mt-1 font-bold text-text-muted uppercase">Bot</span>
+                    </div>
+                </div>
+
+                <button class="neo-btn text-danger flex items-center gap-2 ml-2" onclick="restartSystem()">
+                    <i data-lucide="power" class="w-5 h-5"></i> Reiniciar
                 </button>
+            </div>
+        </div>
+    </header>
 
-                <div class="toggle-wrapper" title="Modo Teste (Apenas Eu)">
-                    <i data-lucide="test-tube"></i>
-                    <label class="switch">
-                        <input type="checkbox" id="test-toggle" onclick="toggleTestMode()">
-                        <span class="slider round warning"></span>
-                    </label>
+    <section id="qr-container" class="max-w-md mx-auto mb-8 hidden">
+        <div class="neo-card text-center auto-tilt">
+            <h2 class="text-lg font-bold mb-4 flex items-center justify-center gap-2"><i data-lucide="qr-code"></i> Escanear WhatsApp</h2>
+            <div id="qrcode" class="neo-inset p-4 inline-block bg-white rounded-xl"></div>
+            <p class="text-sm text-text-muted mt-4">Abra o WhatsApp > Aparelhos Conectados</p>
+        </div>
+    </section>
+
+    <main class="max-w-7xl mx-auto px-6 space-y-6">
+
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <div class="neo-card auto-tilt flex flex-col items-center justify-center relative">
+                <h3 class="absolute top-4 left-5 text-xs uppercase font-bold text-text-muted tracking-wider">Retencao IA</h3>
+                <div class="relative w-32 h-32 mt-6">
+                    <svg class="w-full h-full" viewBox="0 0 120 120">
+                        <circle class="text-gray-300 dark:text-gray-700 stroke-current" stroke-width="8" cx="60" cy="60" r="50" fill="transparent"></circle>
+                        <circle id="retention-circle" class="text-success progress-ring__circle stroke-current" stroke-width="8" stroke-linecap="round" cx="60" cy="60" r="50" fill="transparent" stroke-dasharray="314.159" stroke-dashoffset="314.159"></circle>
+                    </svg>
+                    <div class="absolute inset-0 flex items-center justify-center flex-col">
+                        <span id="retention-pct" class="text-3xl font-black text-text-main">0%</span>
+                    </div>
                 </div>
+                <p class="text-[10px] mt-4 text-text-muted text-center leading-tight">Resolvidos pela IA<br>vs Handoff Manual</p>
+            </div>
 
-                <div class="toggle-wrapper" title="Buscar no Estoque Completo (> 8000 itens)">
-                    <i data-lucide="database"></i>
-                    <label class="switch">
-                        <input type="checkbox" id="fullstock-toggle" onclick="toggleFullStock()">
-                        <span class="slider round info"></span>
-                    </label>
+            <div class="neo-card auto-tilt flex flex-col justify-between">
+                <div>
+                    <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-2">Mensagens Totais</h3>
+                    <div id="msg-count" class="text-6xl font-black text-text-main tracking-tighter">0</div>
                 </div>
-
-                <div class="toggle-wrapper" title="Ligar/Desligar Bot">
-                    <i data-lucide="bot"></i>
-                    <label class="switch">
-                        <input type="checkbox" id="bot-toggle" onclick="toggleBot()">
-                        <span class="slider round"></span>
-                    </label>
+                <div class="mt-4 pt-4 border-t border-glass-border flex justify-between text-xs font-semibold text-text-muted">
+                    <div>Status Webhooks: <span class="text-success">Ativo</span></div>
+                    <div>Handoffs: <span id="handoff-count" class="text-danger">0</span></div>
                 </div>
             </div>
-        </header>
 
-        <section class="qr-section" id="qr-container" style="display: none;">
-            <div class="qr-content">
-                <h2><i data-lucide="qr-code"></i> Conectar WhatsApp</h2>
-                <div id="qrcode-wrapper">
-                    <div id="qrcode"></div>
+            <div class="neo-card auto-tilt overflow-hidden flex flex-col">
+                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-3 flex items-center justify-between">
+                    <span>Mural: Demanda Reprimida</span>
+                    <i data-lucide="flame" class="w-4 h-4 text-warning"></i>
+                </h3>
+                <div class="neo-inset p-3 flex-1 flex flex-col gap-2 overflow-y-auto max-h-32 text-xs" id="missed-demand-list">
+                    <div class="text-text-muted text-center pt-8">Aguardando dados...</div>
                 </div>
-                <p>Abra o WhatsApp > Menu > Aparelhos Conectados > <b>Conectar Aparelho</b></p>
             </div>
+
         </section>
 
-        <main>
-            <section class="stats-grid">
-                <div class="card stat-card">
-                    <div class="stat-icon"><i data-lucide="message-square"></i></div>
-                    <div class="stat-info">
-                        <h3>Mensagens</h3>
-                        <p id="msg-count">0</p>
+        <section class="grid grid-cols-1 md:grid-cols-5 gap-6">
+            
+            <div class="neo-card auto-tilt md:col-span-3">
+                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-4"><i data-lucide="bar-chart-2" class="inline w-4 h-4 mr-1"></i> Top Produtos Buscados</h3>
+                <div class="space-y-4" id="top-products-list">
+                    <div class="text-xs text-text-muted">Processando arrays...</div>
+                </div>
+            </div>
+
+            <div class="neo-card auto-tilt md:col-span-2 flex flex-col items-center">
+                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-2 w-full text-left"><i data-lucide="star" class="inline w-4 h-4 mr-1"></i> Satisfacao</h3>
+                <div class="donut-container relative w-48 h-48 mt-2">
+                    <canvas id="satisfactionChart"></canvas>
+                    <div class="absolute inset-0 flex items-center justify-center font-bold text-text-main pointer-events-none text-center" style="font-size: 0.8rem;" id="chart-center-avg">
+                        <span class="text-2xl block">0.0</span><span class="text-[10px] block text-text-muted leading-none">Media</span>
                     </div>
                 </div>
-                <div class="card stat-card">
-                    <div class="stat-icon"><i data-lucide="user-plus"></i></div>
-                    <div class="stat-info">
-                        <h3>Redirecionamentos</h3>
-                        <p id="handoff-count">0</p>
-                    </div>
+            </div>
+
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <div class="neo-card md:col-span-2 h-64 flex flex-col p-0 overflow-hidden relative border border-transparent dark:border-gray-800">
+                <div class="bg-card-bg border-b border-glass-border px-4 py-2 flex items-center justify-between z-10 shadow-sm relative text-text-main">
+                    <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider flex items-center gap-2">
+                        <i data-lucide="terminal" class="w-4 h-4"></i> Live Log
+                    </h3>
+                    <div class="w-2 h-2 rounded-full bg-success animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
                 </div>
-                <div class="card stat-card alert">
-                    <div class="stat-icon"><i data-lucide="alert-triangle"></i></div>
-                    <div class="stat-info">
-                        <h3>Demanda Reprimida</h3>
-                        <p id="missed-count">Ver CSV</p>
-                    </div>
+                <div class="cyber-terminal flex-1 p-4 text-xs font-medium" id="log-terminal">
+                    <div>[SYSTEM] Terminal Ready. Awaiting Stream...</div>
                 </div>
-            </section>
+            </div>
 
-            <section class="dashboard-grid">
-                <div class="card chart-card">
-                    <h2><i data-lucide="smile"></i> Satisfação dos Clientes</h2>
-                    <div class="chart-wrapper">
-                        <canvas id="satisfactionChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="card holidays-card">
-                    <h2><i data-lucide="calendar-off"></i> Dias Fechados</h2>
-                    <div class="input-group">
-                        <input type="date" id="holiday-input">
-                        <button onclick="addHoliday()"><i data-lucide="plus"></i> Adicionar</button>
-                    </div>
-                    <ul id="holiday-list"></ul>
-                </div>
-            </section>
-
-            <section class="neural-net-section">
-                <div class="card neural-card">
-                    <h2
-                        style="position: absolute; top: 20px; left: 20px; z-index: 5; margin: 0; color: var(--text-primary); text-shadow: 0 0 10px rgba(255,255,255,0.5);">
-                        <i data-lucide="network"></i> Cérebro do Assistente Virtual
-                    </h2>
-
-                    <svg class="net-lines" preserveAspectRatio="none">
-                        <!-- User to Queue -->
-                        <path d="M 8.5% 45.8% L 25% 45.8%"></path>
-                        <!-- Queue to Brain -->
-                        <path d="M 31% 45.8% L 50% 45.8%" class="active-pulse"></path>
-                        <!-- Brain to Sheets -->
-                        <path d="M 55% 42% L 80% 21%"></path>
-                        <!-- Brain to SQL -->
-                        <path d="M 55% 49% L 80% 69%"></path>
-                    </svg>
-
-                    <div class="node node-user" style="top: 40%; left: 5%;">
-                        <i data-lucide="user"></i>
-                        <div class="tooltip">
-                            <h4>1. Cliente</h4>
-                            <p>Envia áudios, fotos ou mensagens curtas e fragmentadas pelo WhatsApp.</p>
+            <div class="neo-card flex flex-col">
+                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-4"><i data-lucide="settings-2" class="inline w-4 h-4 mr-1"></i> Configuracoes</h3>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-[10px] font-bold text-text-muted uppercase mb-1">Dias Fechados</label>
+                        <div class="flex gap-2 mb-2">
+                            <input type="date" id="holiday-input" class="neo-inset flex-1 px-3 py-2 text-xs border-none outline-none text-text-main bg-transparent h-9">
+                            <button class="neo-btn px-3 h-9 text-text-main" onclick="addHoliday()"><i data-lucide="plus" class="w-4 h-4"></i></button>
                         </div>
+                        <ul id="holiday-list" class="text-xs space-y-1 max-h-24 overflow-y-auto neo-inset p-2 mt-1 list-none"></ul>
                     </div>
 
-                    <div class="node node-queue" style="top: 40%; left: 25%;">
-                        <i data-lucide="filter"></i>
-                        <div class="tooltip">
-                            <h4>2. Queue & Debounce</h4>
-                            <p>Segura as mensagens do cliente por 5s para juntá-las numa única requisição antes de
-                                passar para a Inteligência.</p>
-                        </div>
-                    </div>
-
-                    <div class="node node-brain primary spin" style="animation-duration: 20s; top: 40%; left: 50%;">
-                        <i data-lucide="brain-circuit"></i>
-                        <div class="tooltip">
-                            <h4>3. Agente Gemini 2.5</h4>
-                            <p>Interpreta a intenção do cliente, procura a "Persona", analisa imagens e formata
-                                respostas persuasivas.</p>
-                        </div>
-                    </div>
-
-                    <div class="node node-sheets success" style="top: 15%; left: 80%;">
-                        <i data-lucide="table"></i>
-                        <div class="tooltip">
-                            <h4>4. API Google Sheets</h4>
-                            <p>Atua na nuvem rastreando a planilha com base no algoritmo de pontos (Priorizando Cor e
-                                Modelo exato).</p>
-                        </div>
-                    </div>
-
-                    <div class="node node-sql" style="top: 65%; left: 80%;">
-                        <i data-lucide="database"></i>
-                        <div class="tooltip">
-                            <h4>5. SQLite DB</h4>
-                            <p>Responsável pelo contexto contínuo. "Lembra" do que foi falado antes sem estourar limites
-                                tarifários.</p>
-                        </div>
+                    <div class="pt-2 border-t border-glass-border mt-auto h-full flex items-end">
+                        <button class="neo-btn w-full py-3 justify-center text-xs font-bold tracking-widest text-text-main" onclick="alert('Funcionalidade de force-refresh da planilha engatilhada.')">
+                            <i data-lucide="database-zap" class="w-4 h-4 text-warning inline-block mr-1"></i> SINC PLANILHA
+                        </button>
                     </div>
                 </div>
-            </section>
-        </main>
-    </div>
 
-    <!-- Scripts -->
+            </div>
+
+        </section>
+
+    </main>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="script.js"></script>
-    <script>
-        lucide.createIcons();
-    </script>
+    <script>lucide.createIcons();</script>
 </body>
-
 </html>
