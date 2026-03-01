@@ -15,7 +15,7 @@ const model = genAI.getGenerativeModel(modelConfig);
  * @param {Array} stockContext - Products available/relevant
  * @param {Function} onWait - Optional callback when waiting for Rate Limits
  */
-async function generateResponse(userText, mediaData, chatHistory, stockContext, onWait = null) {
+async function generateResponse(userText, mediaData, chatHistory, stockContext, onWait = null, offHoursContext = null) {
     // Retry Logic
     const MAX_RETRIES = 5;
     let delay = 2000; // Start with 2 seconds
@@ -84,6 +84,7 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
                 "- CONCISÃO E AFUNILAMENTO (ANTI-TEXTÃO): Se a busca retornar mais de 3 variações do mesmo produto (ex: conectores de vários fios, parafusos de vários tamanhos), VOCÊ É PROIBIDO de listar todas as opções e preços. Em vez disso, diga brevemente que temos o produto e faça APENAS UMA pergunta de afunilamento para descobrir a necessidade exata (ex: \"Para quantos fios você precisa?\"). Mantenha as respostas curtas e humanas.";
 
             const sessionPrompt = `### CONTEXTO DE TEMPO:\n${todayStr}\n\n` +
+                (offHoursContext ? `### ALERTA DE HORÁRIO COMERCIAL (SIGA ESTRITAMENTE):\n${offHoursContext}\n\n` : "") +
                 `### INFORMAÇÕES DA LOJA:\n${storeInfo}\n\n${workingHoursText}\n\n${stockInfoText}\n\n` +
                 `${specificRules}\n\n` +
                 `${whatsappFormattingInstruct}\n\n` +

@@ -722,11 +722,14 @@ async function setupEvents() {
                     await sock.sendPresenceUpdate('composing', jid);
                     await new Promise(resolve => setTimeout(resolve, 1000));
 
+                    const todayDay = getBrazilTime().getDay();
+                    const nextBusinessDayText = (todayDay === 6 || todayDay === 0) ? "na segunda-feira" : "amanhã";
+
                     let handoffMsg = "";
                     if (isOpen()) {
                         handoffMsg = "Vou repassar para um atendente verificar isso certinho para você, só um segundo.";
                     } else {
-                        handoffMsg = "Deixei sua dúvida anotada! Como nossa loja já fechou hoje, um atendente humano vai te responder assim que abrirmos amanhã às 08h.";
+                        handoffMsg = `Deixei sua dúvida anotada! Como nossa loja já fechou hoje, um atendente humano vai te responder assim que abrirmos ${nextBusinessDayText} às 08h.`;
                     }
 
                     await sock.sendMessage(jid, { text: handoffMsg });
@@ -757,9 +760,21 @@ async function setupEvents() {
                 const finalPromptInput = finalVisualKeyword || combinedText.trim();
                 console.log(`[Gerando Resposta] Intent Final: ${finalPromptInput} | Itens no Contexto: ${stockContext ? stockContext.length : 0}`);
 
+                let offHoursContext = null;
+                if (!isOpen()) {
+                    const sessionParams = userSessions.get(jid) || { state: 'DEFAULT' };
+                    if (!sessionParams.hasNotifiedOffHours) {
+                        offHoursContext = "AVISO OBRIGATÓRIO: A loja física está fechada no momento. Informe isso educadamente e diga que você está de plantão virtual. PLANTÃO VIRTUAL: Na PRIMEIRA vez que avisar que a loja física está fechada, adicione uma frase proativa garantindo que você (o assistente virtual) está disponível AGORA para checar estoques, consultar preços e listar opções, adiantando o atendimento para quando a loja abrir.";
+                        sessionParams.hasNotifiedOffHours = true;
+                        userSessions.set(jid, sessionParams);
+                    } else {
+                        offHoursContext = "AVISO DE CONTEXTO: A loja está fechada, mas VOCÊ JÁ AVISOU o cliente sobre isso nas mensagens anteriores. É ESTRITAMENTE PROIBIDO repetir que a loja está fechada, pedir para aguardar ou mencionar horários. Aja naturalmente e foque 100% em responder sobre o produto.";
+                    }
+                }
+
                 let response;
                 try {
-                    response = await aiService.generateResponse(finalPromptInput, lastMedia, chatsHistory, stockContext, onWait);
+                    response = await aiService.generateResponse(finalPromptInput, lastMedia, chatsHistory, stockContext, onWait, offHoursContext);
                 } catch (apiError) {
                     console.error("🚨 [ERRO FATAL API] Falha ou Timeout na geração da resposta FINAL pelo LLM:", apiError);
 
@@ -871,7 +886,9 @@ async function setupEvents() {
                     if (isOpen()) {
                         await sock.sendMessage(jid, { text: "Vou repassar para um atendente responder certinho para você, só um segundo." });
                     } else {
-                        await sock.sendMessage(jid, { text: "Deixei sua dúvida anotada! Como nossa loja já fechou hoje, um atendente humano vai te responder assim que abrirmos amanhã às 08h." });
+                        const todayDay = getBrazilTime().getDay();
+                        const nextBusinessDayText = (todayDay === 6 || todayDay === 0) ? "na segunda-feira" : "amanhã";
+                        await sock.sendMessage(jid, { text: `Deixei sua dúvida anotada! Como nossa loja já fechou hoje, um atendente humano vai te responder assim que abrirmos ${nextBusinessDayText} às 08h.` });
                     }
                     userPausedStates.set(jid, getBrazilDateString());
                     metricsService.incrementHandoff();
