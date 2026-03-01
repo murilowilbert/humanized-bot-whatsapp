@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR" class="dark">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -28,32 +29,49 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/countup.js/2.0.8/countUp.umd.js"></script>
 </head>
+
 <body class="antialiased min-h-screen pb-10">
 
     <header class="glass-header sticky top-0 z-50 px-6 py-4 mb-8">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
-            
+
             <div class="flex items-center gap-3">
                 <i data-lucide="settings" class="spin-3d text-success w-8 h-8"></i>
-                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-400 to-gray-600 dark:from-gray-200 dark:to-white">Ferragem Marlene - Core</h1>
+                <h1
+                    class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-400 to-gray-600 dark:from-gray-200 dark:to-white">
+                    Ferragem Marlene - Core</h1>
             </div>
 
             <div class="flex items-center gap-6">
-                <div id="ws-status" class="neo-inset px-4 py-1.5 flex items-center gap-2 text-sm font-semibold text-danger">
+                <div id="ws-status"
+                    class="neo-inset px-4 py-1.5 flex items-center gap-2 text-sm font-semibold text-danger">
                     <i data-lucide="wifi-off" class="w-4 h-4"></i> <span>Offline</span>
                 </div>
 
                 <button id="theme-toggle" class="neo-btn rounded-full p-2" title="Alternar Modo Escuro">
                     <i data-lucide="moon" id="theme-icon" class="w-5 h-5"></i>
                 </button>
+                <!-- Botões Mestres -->
+                <div class="flex items-center gap-4 ml-4">
+                    <div class="flex flex-col items-center" title="Modo Teste (Apenas Eu)">
+                        <input type="checkbox" id="test-toggle" class="neo-toggle warning-toggle"
+                            onclick="toggleTestMode()">
+                        <span class="text-[10px] mt-1 font-bold text-text-muted uppercase">Modo Teste</span>
+                    </div>
 
-                <div class="flex items-center gap-3 ml-4">
-                    <div class="flex flex-col items-center">
+                    <div class="flex flex-col items-center" title="Buscar no Estoque Completo">
+                        <input type="checkbox" id="fullstock-toggle" class="neo-toggle info-toggle"
+                            onclick="toggleFullStock()">
+                        <span class="text-[10px] mt-1 font-bold text-text-muted uppercase">Estoque Total</span>
+                    </div>
+
+                    <div class="flex flex-col items-center" title="Ligar/Desligar Bot">
                         <input type="checkbox" id="bot-toggle" class="neo-toggle" onclick="toggleBot()">
-                        <span class="text-[10px] mt-1 font-bold text-text-muted uppercase">Bot</span>
+                        <span class="text-[10px] mt-1 font-bold text-text-muted uppercase">Bot Power</span>
                     </div>
                 </div>
 
+                <!-- Botão do Pânico (Restart) -->
                 <button class="neo-btn text-danger flex items-center gap-2 ml-2" onclick="restartSystem()">
                     <i data-lucide="power" class="w-5 h-5"></i> Reiniciar
                 </button>
@@ -63,7 +81,8 @@
 
     <section id="qr-container" class="max-w-md mx-auto mb-8 hidden">
         <div class="neo-card text-center auto-tilt">
-            <h2 class="text-lg font-bold mb-4 flex items-center justify-center gap-2"><i data-lucide="qr-code"></i> Escanear WhatsApp</h2>
+            <h2 class="text-lg font-bold mb-4 flex items-center justify-center gap-2"><i data-lucide="qr-code"></i>
+                Escanear WhatsApp</h2>
             <div id="qrcode" class="neo-inset p-4 inline-block bg-white rounded-xl"></div>
             <p class="text-sm text-text-muted mt-4">Abra o WhatsApp > Aparelhos Conectados</p>
         </div>
@@ -72,19 +91,24 @@
     <main class="max-w-7xl mx-auto px-6 space-y-6">
 
         <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
+
             <div class="neo-card auto-tilt flex flex-col items-center justify-center relative">
-                <h3 class="absolute top-4 left-5 text-xs uppercase font-bold text-text-muted tracking-wider">Retencao IA</h3>
+                <h3 class="absolute top-4 left-5 text-xs uppercase font-bold text-text-muted tracking-wider">Retencao IA
+                </h3>
                 <div class="relative w-32 h-32 mt-6">
                     <svg class="w-full h-full" viewBox="0 0 120 120">
-                        <circle class="text-gray-300 dark:text-gray-700 stroke-current" stroke-width="8" cx="60" cy="60" r="50" fill="transparent"></circle>
-                        <circle id="retention-circle" class="text-success progress-ring__circle stroke-current" stroke-width="8" stroke-linecap="round" cx="60" cy="60" r="50" fill="transparent" stroke-dasharray="314.159" stroke-dashoffset="314.159"></circle>
+                        <circle class="text-gray-300 dark:text-gray-700 stroke-current" stroke-width="8" cx="60" cy="60"
+                            r="50" fill="transparent"></circle>
+                        <circle id="retention-circle" class="text-success progress-ring__circle stroke-current"
+                            stroke-width="8" stroke-linecap="round" cx="60" cy="60" r="50" fill="transparent"
+                            stroke-dasharray="314.159" stroke-dashoffset="314.159"></circle>
                     </svg>
                     <div class="absolute inset-0 flex items-center justify-center flex-col">
                         <span id="retention-pct" class="text-3xl font-black text-text-main">0%</span>
                     </div>
                 </div>
-                <p class="text-[10px] mt-4 text-text-muted text-center leading-tight">Resolvidos pela IA<br>vs Handoff Manual</p>
+                <p class="text-[10px] mt-4 text-text-muted text-center leading-tight">Resolvidos pela IA<br>vs Handoff
+                    Manual</p>
             </div>
 
             <div class="neo-card auto-tilt flex flex-col justify-between">
@@ -92,18 +116,21 @@
                     <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-2">Mensagens Totais</h3>
                     <div id="msg-count" class="text-6xl font-black text-text-main tracking-tighter">0</div>
                 </div>
-                <div class="mt-4 pt-4 border-t border-glass-border flex justify-between text-xs font-semibold text-text-muted">
+                <div
+                    class="mt-4 pt-4 border-t border-glass-border flex justify-between text-xs font-semibold text-text-muted">
                     <div>Status Webhooks: <span class="text-success">Ativo</span></div>
                     <div>Handoffs: <span id="handoff-count" class="text-danger">0</span></div>
                 </div>
             </div>
 
             <div class="neo-card auto-tilt overflow-hidden flex flex-col">
-                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-3 flex items-center justify-between">
+                <h3
+                    class="text-xs uppercase font-bold text-text-muted tracking-wider mb-3 flex items-center justify-between">
                     <span>Mural: Demanda Reprimida</span>
                     <i data-lucide="flame" class="w-4 h-4 text-warning"></i>
                 </h3>
-                <div class="neo-inset p-3 flex-1 flex flex-col gap-2 overflow-y-auto max-h-32 text-xs" id="missed-demand-list">
+                <div class="neo-inset p-3 flex-1 flex flex-col gap-2 overflow-y-auto max-h-32 text-xs"
+                    id="missed-demand-list">
                     <div class="text-text-muted text-center pt-8">Aguardando dados...</div>
                 </div>
             </div>
@@ -111,20 +138,24 @@
         </section>
 
         <section class="grid grid-cols-1 md:grid-cols-5 gap-6">
-            
+
             <div class="neo-card auto-tilt md:col-span-3">
-                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-4"><i data-lucide="bar-chart-2" class="inline w-4 h-4 mr-1"></i> Top Produtos Buscados</h3>
+                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-4"><i data-lucide="bar-chart-2"
+                        class="inline w-4 h-4 mr-1"></i> Top Produtos Buscados</h3>
                 <div class="space-y-4" id="top-products-list">
                     <div class="text-xs text-text-muted">Processando arrays...</div>
                 </div>
             </div>
 
             <div class="neo-card auto-tilt md:col-span-2 flex flex-col items-center">
-                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-2 w-full text-left"><i data-lucide="star" class="inline w-4 h-4 mr-1"></i> Satisfacao</h3>
+                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-2 w-full text-left"><i
+                        data-lucide="star" class="inline w-4 h-4 mr-1"></i> Satisfacao</h3>
                 <div class="donut-container relative w-48 h-48 mt-2">
                     <canvas id="satisfactionChart"></canvas>
-                    <div class="absolute inset-0 flex items-center justify-center font-bold text-text-main pointer-events-none text-center" style="font-size: 0.8rem;" id="chart-center-avg">
-                        <span class="text-2xl block">0.0</span><span class="text-[10px] block text-text-muted leading-none">Media</span>
+                    <div class="absolute inset-0 flex items-center justify-center font-bold text-text-main pointer-events-none text-center"
+                        style="font-size: 0.8rem;" id="chart-center-avg">
+                        <span class="text-2xl block">0.0</span><span
+                            class="text-[10px] block text-text-muted leading-none">Media</span>
                     </div>
                 </div>
             </div>
@@ -132,39 +163,47 @@
         </section>
 
         <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            <div class="neo-card md:col-span-2 h-64 flex flex-col p-0 overflow-hidden relative border border-transparent dark:border-gray-800">
-                <div class="bg-card-bg border-b border-glass-border px-4 py-2 flex items-center justify-between z-10 shadow-sm relative text-text-main">
+
+            <div
+                class="neo-card md:col-span-2 h-64 flex flex-col p-0 overflow-hidden relative border border-transparent dark:border-gray-800">
+                <div
+                    class="bg-card-bg border-b border-glass-border px-4 py-2 flex items-center justify-between z-10 shadow-sm relative text-text-main">
                     <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider flex items-center gap-2">
                         <i data-lucide="terminal" class="w-4 h-4"></i> Live Log
                     </h3>
-                    <div class="w-2 h-2 rounded-full bg-success animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+                    <div class="w-2 h-2 rounded-full bg-success animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]">
+                    </div>
                 </div>
                 <div class="cyber-terminal flex-1 p-4 text-xs font-medium" id="log-terminal">
                     <div>[SYSTEM] Terminal Ready. Awaiting Stream...</div>
                 </div>
             </div>
 
-            <div class="neo-card flex flex-col">
-                <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-4"><i data-lucide="settings-2" class="inline w-4 h-4 mr-1"></i> Configuracoes</h3>
-                
-                <div class="space-y-4">
-                    <div>
+            <!-- Card B: Configurações Rápidas (30%) -->
+            <div class="neo-card flex flex-col justify-between">
+                <div>
+                    <h3 class="text-xs uppercase font-bold text-text-muted tracking-wider mb-4"><i
+                            data-lucide="settings-2" class="inline w-4 h-4 mr-1"></i> Configuracoes</h3>
+
+                    <div class="mb-4">
                         <label class="block text-[10px] font-bold text-text-muted uppercase mb-1">Dias Fechados</label>
                         <div class="flex gap-2 mb-2">
-                            <input type="date" id="holiday-input" class="neo-inset flex-1 px-3 py-2 text-xs border-none outline-none text-text-main bg-transparent h-9">
-                            <button class="neo-btn px-3 h-9 text-text-main" onclick="addHoliday()"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                            <input type="date" id="holiday-input"
+                                class="neo-inset flex-1 px-3 py-2 text-xs border-none outline-none text-text-main bg-transparent h-9">
+                            <button class="neo-btn px-3 h-9 text-text-main" onclick="addHoliday()"><i data-lucide="plus"
+                                    class="w-4 h-4"></i></button>
                         </div>
-                        <ul id="holiday-list" class="text-xs space-y-1 max-h-24 overflow-y-auto neo-inset p-2 mt-1 list-none"></ul>
-                    </div>
-
-                    <div class="pt-2 border-t border-glass-border mt-auto h-full flex items-end">
-                        <button class="neo-btn w-full py-3 justify-center text-xs font-bold tracking-widest text-text-main" onclick="alert('Funcionalidade de force-refresh da planilha engatilhada.')">
-                            <i data-lucide="database-zap" class="w-4 h-4 text-warning inline-block mr-1"></i> SINC PLANILHA
-                        </button>
+                        <ul id="holiday-list"
+                            class="text-xs space-y-1 max-h-16 overflow-y-auto neo-inset p-2 mt-1 list-none"></ul>
                     </div>
                 </div>
 
+                <div class="pt-4 border-t border-glass-border pb-2">
+                    <button class="neo-btn w-full py-3 justify-center text-xs font-bold tracking-widest text-text-main"
+                        onclick="alert('Funcionalidade de force-refresh da planilha engatilhada.')">
+                        <i data-lucide="database-zap" class="w-4 h-4 text-warning inline-block mr-1"></i> SINC PLANILHA
+                    </button>
+                </div>
             </div>
 
         </section>
@@ -176,4 +215,5 @@
     <script src="script.js"></script>
     <script>lucide.createIcons();</script>
 </body>
+
 </html>

@@ -1,213 +1,240 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
 :root {
-  /* LIGHT MODE (Default) */
-  --bg-color: #f3f4f6;
-  --card-bg: #ffffff;
-  --text-main: #1f2937;
-  --text-muted: #6b7280;
-  
-  /* Neumorphic Shadows - Light */
-  --shadow-out: 8px 8px 16px rgba(163, 177, 198, 0.4), -8px -8px 16px rgba(255, 255, 255, 0.8);
-  --shadow-in: inset 4px 4px 8px rgba(163, 177, 198, 0.4), inset -4px -4px 8px rgba(255, 255, 255, 0.8);
-  
-  /* Glassmorphism */
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.5);
+    /* LIGHT MODE (Default) */
+    --bg-color: #f3f4f6;
+    --card-bg: #ffffff;
+    --text-main: #1f2937;
+    --text-muted: #6b7280;
 
-  /* Brand Colors */
-  --color-success: #10b981;
-  --color-danger: #ef4444;
-  --color-warning: #f59e0b;
-  --color-success-dim: rgba(16, 185, 129, 0.2);
-  --color-danger-dim: rgba(239, 68, 68, 0.2);
+    /* Neumorphic Shadows - Light */
+    --shadow-out: 8px 8px 16px rgba(163, 177, 198, 0.4), -8px -8px 16px rgba(255, 255, 255, 0.8);
+    --shadow-in: inset 4px 4px 8px rgba(163, 177, 198, 0.4), inset -4px -4px 8px rgba(255, 255, 255, 0.8);
+
+    /* Glassmorphism */
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.5);
+
+    /* Brand Colors */
+    --color-success: #10b981;
+    --color-danger: #ef4444;
+    --color-warning: #f59e0b;
+    --color-success-dim: rgba(16, 185, 129, 0.2);
+    --color-danger-dim: rgba(239, 68, 68, 0.2);
 }
 
 .dark {
-  /* DARK MODE (Cyberpunk/Slate) */
-  --bg-color: #111827;
-  --card-bg: #1f2937;
-  --text-main: #f9fafb;
-  --text-muted: #9ca3af;
-  
-  /* Neumorphic Shadows - Dark (Subtle glow/inner shadow feel) */
-  --shadow-out: 6px 6px 12px rgba(0, 0, 0, 0.5), -6px -6px 12px rgba(255, 255, 255, 0.03);
-  --shadow-in: inset 4px 4px 8px rgba(0, 0, 0, 0.6), inset -4px -4px 8px rgba(255, 255, 255, 0.03);
-  
-  /* Glassmorphism */
-  --glass-bg: rgba(31, 41, 55, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.05);
+    /* DARK MODE (Cyberpunk/Slate) */
+    --bg-color: #111827;
+    --card-bg: #1f2937;
+    --text-main: #f9fafb;
+    --text-muted: #9ca3af;
+
+    /* Neumorphic Shadows - Dark (Subtle glow/inner shadow feel) */
+    --shadow-out: 6px 6px 12px rgba(0, 0, 0, 0.5), -6px -6px 12px rgba(255, 255, 255, 0.03);
+    --shadow-in: inset 4px 4px 8px rgba(0, 0, 0, 0.6), inset -4px -4px 8px rgba(255, 255, 255, 0.03);
+
+    /* Glassmorphism */
+    --glass-bg: rgba(31, 41, 55, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.05);
 }
 
 body {
-  background-color: var(--bg-color);
-  color: var(--text-main);
-  font-family: 'Inter', sans-serif;
-  transition: background-color 0.3s ease, color 0.3s ease;
-  overflow-x: hidden;
-  margin: 0;
-  min-height: 100vh;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-family: 'Inter', sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    overflow-x: hidden;
+    margin: 0;
+    min-height: 100vh;
 }
 
 /* Glass Header */
 .glass-header {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--glass-border);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
 }
 
 /* Neumorphic Containers */
 .neo-card {
-  background-color: var(--card-bg);
-  box-shadow: var(--shadow-out);
-  border-radius: 1.5rem;
-  padding: 1.5rem;
-  transition: transform 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.15s ease, background-color 0.3s ease;
-  transform-style: preserve-3d;
-  border: 1px solid transparent; /* Anti-aliasing helper */
+    background-color: var(--card-bg);
+    box-shadow: var(--shadow-out);
+    border-radius: 1.5rem;
+    padding: 1.5rem;
+    transition: transform 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.15s ease, background-color 0.3s ease;
+    transform-style: preserve-3d;
+    border: 1px solid transparent;
+    /* Anti-aliasing helper */
 }
 
 .neo-inset {
-  background-color: var(--card-bg);
-  box-shadow: var(--shadow-in);
-  border-radius: 1rem;
-  transition: box-shadow 0.3s ease, background-color 0.3s ease;
+    background-color: var(--card-bg);
+    box-shadow: var(--shadow-in);
+    border-radius: 1rem;
+    transition: box-shadow 0.3s ease, background-color 0.3s ease;
 }
 
 /* Neumorphic Buttons */
 .neo-btn {
-  background-color: var(--card-bg);
-  box-shadow: var(--shadow-out);
-  border-radius: 0.75rem;
-  padding: 0.5rem 1rem;
-  color: var(--text-main);
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  outline: none;
+    background-color: var(--card-bg);
+    box-shadow: var(--shadow-out);
+    border-radius: 0.75rem;
+    padding: 0.5rem 1rem;
+    color: var(--text-main);
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    outline: none;
 }
 
 .neo-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 10px 10px 20px rgba(0,0,0,0.1), -10px -10px 20px rgba(255,255,255,0.05), var(--shadow-out);
+    transform: translateY(-2px);
+    box-shadow: 10px 10px 20px rgba(0, 0, 0, 0.1), -10px -10px 20px rgba(255, 255, 255, 0.05), var(--shadow-out);
 }
 
 .neo-btn:active {
-  box-shadow: var(--shadow-in);
-  transform: translateY(1px);
+    box-shadow: var(--shadow-in);
+    transform: translateY(1px);
 }
 
 /* Action Specific Colors */
-.text-success { color: var(--color-success); }
-.text-danger { color: var(--color-danger); }
-.text-warning { color: var(--color-warning); }
+.text-success {
+    color: var(--color-success);
+}
+
+.text-danger {
+    color: var(--color-danger);
+}
+
+.text-warning {
+    color: var(--color-warning);
+}
 
 /* SVG Circular Progress */
 .progress-ring__circle {
-  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
+    transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
 }
 
 /* 3D Gear Spin */
 @keyframes rotate3d {
-  0% { transform: rotateY(0) rotateZ(0); }
-  100% { transform: rotateY(360deg) rotateZ(360deg); }
+    0% {
+        transform: rotateY(0) rotateZ(0);
+    }
+
+    100% {
+        transform: rotateY(360deg) rotateZ(360deg);
+    }
 }
 
 .spin-3d {
-  animation: rotate3d 4s linear infinite;
-  display: inline-block;
+    animation: rotate3d 4s linear infinite;
+    display: inline-block;
 }
 
 /* Terminal Area */
 .cyber-terminal {
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--color-success);
-  font-size: 0.85rem;
-  background-color: #050505; /* Always dark */
-  box-shadow: var(--shadow-in);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column-reverse; /* Keep scrolled to bottom */
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--color-success);
+    font-size: 0.85rem;
+    background-color: #050505;
+    /* Always dark */
+    box-shadow: var(--shadow-in);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column-reverse;
+    /* Keep scrolled to bottom */
 }
 
 .cyber-terminal::-webkit-scrollbar {
-  width: 8px;
+    width: 8px;
 }
+
 .cyber-terminal::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.3);
+    background: rgba(0, 0, 0, 0.3);
 }
+
 .cyber-terminal::-webkit-scrollbar-thumb {
-  background: var(--color-success-dim);
-  border-radius: 4px;
+    background: var(--color-success-dim);
+    border-radius: 4px;
 }
 
 /* Custom Checkbox/Toggle */
 .neo-toggle {
-  position: relative;
-  width: 48px;
-  height: 24px;
-  appearance: none;
-  background: var(--card-bg);
-  box-shadow: var(--shadow-in);
-  border-radius: 12px;
-  outline: none;
-  cursor: pointer;
-  transition: background 0.3s;
+    position: relative;
+    width: 48px;
+    height: 24px;
+    appearance: none;
+    background: var(--card-bg);
+    box-shadow: var(--shadow-in);
+    border-radius: 12px;
+    outline: none;
+    cursor: pointer;
+    transition: background 0.3s;
 }
 
 .neo-toggle::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  background: var(--text-muted);
-  border-radius: 50%;
-  box-shadow: var(--shadow-out);
-  transition: transform 0.3s, background 0.3s;
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    box-shadow: var(--shadow-out);
+    transition: transform 0.3s, background 0.3s;
 }
 
 .neo-toggle:checked::after {
-  transform: translateX(24px);
-  background: var(--color-success);
+    transform: translateX(24px);
+    background: var(--color-success);
 }
+
 .neo-toggle.danger-toggle:checked::after {
-  background: var(--color-danger);
+    background: var(--color-danger);
+}
+
+.neo-toggle.warning-toggle:checked::after {
+    background: var(--color-warning);
+}
+
+.neo-toggle.info-toggle:checked::after {
+    background: #3b82f6;
 }
 
 /* 3D Horizontal Bars */
 .neo-progress-bar {
-  background: var(--card-bg);
-  box-shadow: var(--shadow-in);
-  border-radius: 999px;
-  overflow: hidden;
-  height: 12px;
-  width: 100%;
+    background: var(--card-bg);
+    box-shadow: var(--shadow-in);
+    border-radius: 999px;
+    overflow: hidden;
+    height: 12px;
+    width: 100%;
 }
 
 .neo-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--color-success-dim), var(--color-success));
-  box-shadow: 2px 0 5px rgba(0,0,0,0.2);
-  border-radius: 999px;
-  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    height: 100%;
+    background: linear-gradient(90deg, var(--color-success-dim), var(--color-success));
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
+    border-radius: 999px;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Extruded Donut Container */
 .donut-container {
-  box-shadow: var(--shadow-in);
-  border-radius: 50%;
-  padding: 10px;
-  background: var(--card-bg);
+    box-shadow: var(--shadow-in);
+    border-radius: 50%;
+    padding: 10px;
+    background: var(--card-bg);
 }

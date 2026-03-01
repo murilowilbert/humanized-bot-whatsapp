@@ -104,6 +104,8 @@ socket.on('status', (data) => {
     document.getElementById('bot-toggle').checked = data.enabled;
     const testToggle = document.getElementById('test-toggle');
     if (testToggle) testToggle.checked = data.testMode;
+    const fullstockToggle = document.getElementById('fullstock-toggle');
+    if (fullstockToggle) fullstockToggle.checked = data.fullStockEnabled;
 
     const wsDiv = document.getElementById('ws-status');
     if (data.initialized) {
@@ -156,6 +158,11 @@ window.toggleBot = async function () {
 window.toggleTestMode = async function () {
     const currentState = document.getElementById('test-toggle').checked;
     await fetch(`${API_URL}/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'test', enabled: currentState }) });
+}
+
+window.toggleFullStock = async function () {
+    const currentState = document.getElementById('fullstock-toggle').checked;
+    await fetch(`${API_URL}/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fullstock', enabled: currentState }) });
 }
 
 window.restartSystem = async function () {
