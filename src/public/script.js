@@ -194,6 +194,16 @@ window.toggleFullStock = async function () {
     await fetch(`${API_URL}/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'fullstock', enabled: currentState }) });
 }
 
+window.startBot = async function () {
+    const btn = document.getElementById('start-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader" class="w-5 h-5 spin-2d"></i>';
+        lucide.createIcons();
+    }
+    await fetch(`${API_URL}/start`, { method: 'POST' });
+}
+
 window.restartSystem = async function () {
     if (!confirm("Reiniciar todo o core? (Desconecta sessões pendentes)")) return;
     await fetch(`${API_URL}/restart`, { method: 'POST' });
