@@ -142,6 +142,43 @@ body {
     display: inline-block;
 }
 
+/* 2D Spin */
+@keyframes rotate2d {
+    0% {
+        transform: rotateZ(0);
+    }
+
+    100% {
+        transform: rotateZ(360deg);
+    }
+}
+
+.spin-2d {
+    animation: rotate2d 8s linear infinite;
+    display: inline-block;
+}
+
+.spin-hover:hover {
+    animation: rotate2d 2s linear infinite;
+}
+
+/* Tab Navigation System */
+.tab-content {
+    animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Terminal Area */
 .cyber-terminal {
     font-family: 'JetBrains Mono', monospace;

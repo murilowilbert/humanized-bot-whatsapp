@@ -25,6 +25,35 @@ themeToggle.addEventListener('click', () => {
     }
 });
 
+// Tab Navigation Logic
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        // Reset all buttons
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            b.classList.remove('active', 'text-[#10b981]');
+            b.classList.add('text-text-muted');
+        });
+
+        // Activate clicked button
+        btn.classList.add('active', 'text-[#10b981]');
+        btn.classList.remove('text-text-muted');
+
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('block');
+            content.classList.add('hidden');
+        });
+
+        // Show target tab
+        const targetId = btn.getAttribute('data-target');
+        const targetElement = document.getElementById(targetId);
+        if (targetElement) {
+            targetElement.classList.remove('hidden');
+            targetElement.classList.add('block');
+        }
+    });
+});
+
 // Vanilla 3D Tilt Engine
 function enableTilt() {
     const cards = document.querySelectorAll('.auto-tilt');
@@ -264,32 +293,39 @@ function renderMockTopProducts() {
 
 function renderChart(ratings) {
     const ctx = document.getElementById('satisfactionChart').getContext('2d');
-    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let posCount = 0;
+    let negCount = 0;
     let totalScore = 0;
     let totalVotes = 0;
 
     ratings.forEach(r => {
-        if (counts[r.score] !== undefined) {
-            counts[r.score]++;
-            totalScore += r.score;
-            totalVotes++;
+        if (r.score >= 4) {
+            posCount++;
+        } else if (r.score >= 1) {
+            negCount++;
         }
+        totalScore += r.score;
+        totalVotes++;
     });
 
     const avg = totalVotes > 0 ? (totalScore / totalVotes).toFixed(1) : "0.0";
-    document.getElementById('chart-center-avg').innerHTML = `<span class="text-2xl block">${avg}</span><span class="text-[10px] block text-text-muted leading-none">Média</span>`;
+    document.getElementById('chart-center-avg').innerHTML = `<span class="text-2xl block">${avg}</span><span class="text-[10px] block text-text-muted leading-none">Media</span>`;
 
     if (window.myChart) window.myChart.destroy();
 
     const isDark = document.documentElement.classList.contains('dark');
 
+    // Calculate Percentages for labels
+    const posPct = totalVotes > 0 ? Math.round((posCount / totalVotes) * 100) : 0;
+    const negPct = totalVotes > 0 ? Math.round((negCount / totalVotes) * 100) : 0;
+
     window.myChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['1 ⭐', '2 ⭐', '3 ⭐', '4 ⭐', '5 ⭐'],
+            labels: [`Feedback Positivo ${posPct}%`, `Feedback Negativo ${negPct}%`],
             datasets: [{
-                data: [counts[1], counts[2], counts[3], counts[4], counts[5]],
-                backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#10b981'],
+                data: [posCount, negCount],
+                backgroundColor: ['#10b981', '#ef4444'],
                 borderWidth: 0,
                 hoverOffset: 6
             }]
