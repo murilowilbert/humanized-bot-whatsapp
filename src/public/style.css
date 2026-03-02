@@ -212,6 +212,7 @@ body {
     width: 48px;
     height: 24px;
     appearance: none;
+    -webkit-appearance: none;
     background: var(--card-bg);
     box-shadow: var(--shadow-in);
     border-radius: 12px;
