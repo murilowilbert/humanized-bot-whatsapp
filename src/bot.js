@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const pino = require('pino');
+const P = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
@@ -183,6 +183,9 @@ async function setupEvents() {
         if (m.type !== 'notify') return; // Ignora mensagens vindas de histórico/sincronização
 
         const msg = m.messages[0];
+
+        // 0. Trava de descarte imediato (Ignorar Broadcast/Status)
+        if (msg.key?.remoteJid === 'status@broadcast') return;
 
         // Ensure text extraction from Baileys structure
         let textContent = msg.message?.conversation ||
@@ -530,6 +533,15 @@ async function setupEvents() {
                 let categoryMatch = null;
                 let stockContext = [];
                 let finalVisualKeyword = null;
+
+                if (intent === 'ORDER_RESERVE') {
+                    console.log("[Intent Router] Intenção de Compra Detectada. Handoff positivo...");
+                    await sock.sendPresenceUpdate('composing', jid);
+                    await sock.sendMessage(jid, { text: "Ótimo! Já avisei o balcão para separar o seu pedido." });
+                    userPausedStates.set(jid, getBrazilDateString());
+                    metricsService.incrementHandoff();
+                    return; // Encerra o processamento sem bater na API de Estoque
+                }
 
                 if (intent === 'SEARCH') {
                     expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
@@ -993,7 +1005,7 @@ async function initialize() {
             version,
             auth: state,
             printQRInTerminal: false,
-            logger: pino({ level: 'silent' }), // Suppress detailed terminal logs from baileys
+            logger: P({ level: 'silent' }), // Suppress detailed terminal logs from baileys
             browser: Browsers.baileys('Desktop'),
             syncFullHistory: false,
             generateHighQualityLinkPreview: true
