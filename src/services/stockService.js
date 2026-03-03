@@ -151,10 +151,10 @@ async function getSimilarProducts(product) {
  */
 async function searchCategory(query) {
     const categoryResult = await googleSheetsService.searchCategoryInSheet(query);
-    if (categoryResult) {
-        console.log(`[Busca Categoria] Match encontrado para "${query}": ${categoryResult.categoria_geral}`);
+    if (categoryResult && categoryResult.length > 0) {
+        console.log(`[Busca Categoria] Match encontrado para "${query}": ${categoryResult[0].categoria_geral} (Total: ${categoryResult.length})`);
     }
-    return categoryResult;
+    return categoryResult || [];
 }
 module.exports = {
     loadStock,

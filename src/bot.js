@@ -534,22 +534,39 @@ async function setupEvents() {
                 if (intent === 'SEARCH') {
                     expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
-                    // Passo A: Busca estrita no cachePrincipal
-                    // Corrige o array de busca pra ser limpo, SEM concatenar numa única string (evita zerar score do Fuse)
                     let cleanSearchTermsArray = expandedQueryArray.length > 0 ? expandedQueryArray : [searchKeywords];
-                    // Adiciona a keyword principal se não estiver
                     if (!cleanSearchTermsArray.includes(searchKeywords)) cleanSearchTermsArray.push(searchKeywords);
                     // Remove \n de todos os itens do array
                     cleanSearchTermsArray = cleanSearchTermsArray.map(t => t.replace(/\n/g, ' ').trim());
 
-                    console.log(`[Busca -> Tabela Principal] Pesquisando por array de termos: [${cleanSearchTermsArray.join(', ')}]`);
-                    stockContext = await stockService.searchProduct(cleanSearchTermsArray);
+                    console.log(`[Unified Search] Pesquisando simultaneamente em AMBOS caches para: [${cleanSearchTermsArray.join(', ')}]`);
 
-                    // Passo B: SOMENTE SE o Passo A retornar 0 itens, inicie a busca no cacheGeral
-                    if (!stockContext || stockContext.length === 0) {
-                        console.log(`[Busca -> Tabela Geral] Pesquisando por array de termos: [${cleanSearchTermsArray.join(', ')}]`);
-                        categoryMatch = await stockService.searchCategory(cleanSearchTermsArray);
+                    const [principalMatches, geralMatches] = await Promise.all([
+                        stockService.searchProduct(cleanSearchTermsArray),
+                        stockService.searchCategory(cleanSearchTermsArray)
+                    ]);
+
+                    let combinedContext = [];
+                    if (principalMatches && principalMatches.length > 0) combinedContext.push(...principalMatches);
+                    if (geralMatches && geralMatches.length > 0) combinedContext.push(...geralMatches);
+
+                    const seenMap = new Set();
+                    stockContext = [];
+                    for (let item of combinedContext) {
+                        const realItem = item.item || item;
+                        // Extrai a chave única para desduplicar entre as duas tabelas
+                        const uniqueKey = realItem['código'] || realItem['codigo'] || realItem['ean'] || realItem['modelo/produto'] || realItem['categoria_geral'];
+
+                        if (uniqueKey && !seenMap.has(uniqueKey)) {
+                            seenMap.add(uniqueKey);
+                            stockContext.push(realItem);
+                        }
                     }
+
+                    stockContext = stockContext.slice(0, 15);
+                    console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
+
+                    categoryMatch = null; // A Triagem Estratégica agora é feita pela IA (Fim do Hardcode Triage Bypass)
                 }
 
                 if (intent === 'SEARCH') {

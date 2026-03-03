@@ -238,7 +238,7 @@ async function searchCategoryInSheet(keywordsArray) {
 
         if (exactMatch) {
             console.log(`[Google Sheets] 🎯 Match Parcial/Tag encontrado para Categoria: ${exactMatch['categoria_geral']}`);
-            return exactMatch;
+            return [exactMatch];
         }
     }
 
@@ -268,10 +268,10 @@ async function searchCategoryInSheet(keywordsArray) {
     uniqueResults.sort((a, b) => a.score - b.score);
 
     if (uniqueResults && uniqueResults.length > 0) {
-        return uniqueResults[0].item;
+        return uniqueResults.slice(0, 5).map(r => r.item);
     }
 
-    return null;
+    return [];
 }
 
 module.exports = {

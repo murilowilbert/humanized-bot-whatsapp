@@ -326,6 +326,12 @@ Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
         // Regex para tirar os blocos de código se a IA mandar (ex ```json ["1"] ```)
         const cleanJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
         const keywordsArray = JSON.parse(cleanJson);
+
+        const lowerMsg = sanitizedMessage.toLowerCase();
+        if (lowerMsg.includes('água de poço') || lowerMsg.includes('agua de poco') || lowerMsg.includes('caixa d\'água baixa') || lowerMsg.includes('pouca pressão') || lowerMsg.includes('pouca pressao') || lowerMsg.includes('agua de poço') || lowerMsg.includes('pressão da água')) {
+            keywordsArray.push('pressurizador', 'turbo');
+        }
+
         console.log(`[AI Keyword Expansion] Sucesso! Termos: ${JSON.stringify(keywordsArray)}`);
         return keywordsArray;
     } catch (e) {
