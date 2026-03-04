@@ -534,16 +534,7 @@ async function setupEvents() {
                 let stockContext = [];
                 let finalVisualKeyword = null;
 
-                if (intent === 'ORDER_RESERVE') {
-                    console.log("[Intent Router] Intenção de Compra Detectada. Handoff positivo...");
-                    await sock.sendPresenceUpdate('composing', jid);
-                    await sock.sendMessage(jid, { text: "Ótimo! Já avisei o balcão para separar o seu pedido." });
-                    userPausedStates.set(jid, getBrazilDateString());
-                    metricsService.incrementHandoff();
-                    return; // Encerra o processamento sem bater na API de Estoque
-                }
-
-                if (intent === 'SEARCH') {
+                if (intent === 'SEARCH' || intent === 'ORDER_RESERVE') {
                     expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                     let cleanSearchTermsArray = expandedQueryArray.length > 0 ? expandedQueryArray : [searchKeywords];
@@ -581,7 +572,7 @@ async function setupEvents() {
                     categoryMatch = null; // A Triagem Estratégica agora é feita pela IA (Fim do Hardcode Triage Bypass)
                 }
 
-                if (intent === 'SEARCH') {
+                if (intent === 'SEARCH' || intent === 'ORDER_RESERVE') {
                     // Feature 8: Visual Verification com Gabarito (Oracle Master)
                     if (lastMedia && lastMedia.mimeType.startsWith('image/') && stockContext && stockContext.length > 0) {
                         console.log("[Semantic Pre-Ranking] Refinando opções da busca inicial...");
