@@ -252,8 +252,11 @@ async function setupEvents() {
                 userPausedStates.delete(jid);
                 console.log(`[Manual Override] Atendente soltou a trava (!bot) para ${headers}`);
                 await sock.sendMessage(jid, { text: "✅ Bot reativado para este chat." });
+            } else {
+                userPausedStates.set(jid, Date.now());
+                console.log(`[Human Takeover] Atendente respondeu manualmente. Bot mutado para ${headers}`);
             }
-            // return; // DESATIVADO TEMPORARIAMENTE PARA TESTES DO ADMIN NO PRÓPRIO CHAT
+            return;
         }
 
         // Clear existing timeout if the user sends a new message
@@ -499,10 +502,11 @@ async function setupEvents() {
                 const ttlLimit = Date.now() - (36 * 60 * 60 * 1000);
                 const recentRecords = historyRecords.filter(r => new Date(r.createdAt).getTime() > ttlLimit);
 
-                // Edge Case 5: Context Truncation Slice(-12)
+                // Otimização de Janela de Contexto (Rolling Window)
+                // Limita a 12 interações parciais para não estourar o limite de tokens do LLM.
                 let chatsHistory = recentRecords.map(r => ({ role: r.role, content: r.content }));
-                if (chatsHistory.length > 12) {
-                    chatsHistory = chatsHistory.slice(-12);
+                while (chatsHistory.length > 12) {
+                    chatsHistory.shift();
                 }
 
                 // Verifica se tem comandos globais no lote
@@ -730,39 +734,9 @@ async function setupEvents() {
                     }
                 }
 
-                // Passo C: Handoff Real (Genuíno 0 Resultados)
-                if (intent === 'SEARCH' && (!stockContext || stockContext.length === 0)) {
-                    console.log(`[Handoff Hardcoded] Busca Principal = 0 e Triagem Geral = 0. Acionando Transbordo imediato (Passo C)...`);
-
-                    // Salva a mensagem do user antes de abortar
-                    await prisma.chatHistory.create({
-                        data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
-                    });
-
-                    await sock.sendPresenceUpdate('composing', jid);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-
-                    const todayDay = getBrazilTime().getDay();
-                    const nextBusinessDayText = (todayDay === 6 || todayDay === 0) ? "na segunda-feira" : "amanhã";
-
-                    let handoffMsg = "";
-                    if (isOpen()) {
-                        handoffMsg = "Vou repassar para um atendente verificar isso certinho para você, só um segundo.";
-                    } else {
-                        handoffMsg = `Deixei sua dúvida anotada! Como nossa loja já fechou hoje, um atendente humano vai te responder assim que abrirmos ${nextBusinessDayText} às 08h.`;
-                    }
-
-                    await sock.sendMessage(jid, { text: handoffMsg });
-
-                    await prisma.chatHistory.create({
-                        data: { phoneNumber: headers, role: 'model', content: handoffMsg }
-                    });
-
-                    userPausedStates.set(jid, getBrazilDateString());
-                    metricsService.incrementHandoff();
-
-                    return; // 🛑 ABORTA AQUI! O aiserice.generateResponse NUNCA será chamado.
-                }
+                // Passo C anterior (Handoff Real 0 Resultados) foi removido.
+                // Agora o Fallback Inteligente permite que o array vazio seja passado
+                // para o LLM Final lidar com a falta de produtos de forma autônoma.
 
                 // Passo A: IA Conversacional Normal (Há resultados no Estoque)
                 // Se chegou até aqui, stockContext tem > 0 itens OU é intent FAQ. A IA Final entra em cena.

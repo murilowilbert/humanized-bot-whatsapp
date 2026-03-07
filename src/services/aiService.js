@@ -73,10 +73,7 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
                 "- REGRA ANTI-LOOP (ABSOLUTA): Verifique o histórico de mensagens. Se VOCÊ acabou de fazer uma pergunta de afunilamento na mensagem anterior e o USUÁRIO acabou de RESPONDER a essa preferência, VOCÊ É ESTRITAMENTE PROIBIDO de fazer uma nova pergunta genérica. Você DEVE cruzar a resposta do usuário com os [ESTOQUE ATUALIZADO], selecionar as 2 ou 3 opções que melhor atendem ao pedido, informar os preços diretamente e explicar brevemente a diferença entre elas.\n" +
                 "- FOTOS DO CLIENTE: O sistema já leu a imagem e injetou os possíveis produtos no estoque. AJA NATURALMENTE. NUNCA use frases robóticas como 'Com base na foto', 'Analisando a imagem', 'O sistema identificou', etc. Apenas assuma que você viu a foto e vá direto ao ponto (ex: 'Sim, nós temos a Ducha Ducali por...').\n" +
-                (isFullStockEnabled
-                    ? "- ESTOQUE VAZIO: NUNCA diga 'Nosso estoque indica Produto não encontrado'. Diga apenas 'Pior que não tenho essa marca no momento' ou ofereça um similar amigavelmente.\n"
-                    : "- ESTOQUE VAZIO: NUNCA Diga que 'não temos' ou 'não tem essa marca'. De imediato use a regra de HANDOFF ('Vou repassar para um atendente responder certinho...').\n"
-                ) +
+                "- ESTOQUE VAZIO: SE O CONTEXTO DE BUSCA ESTIVER VAZIO (0 Itens): NÃO invente produtos. Diga ao cliente que não encontrou exatamente por aquele nome e FAÇA UMA PERGUNTA PARA REFINAR a busca (ex: \"Sabe me dizer a marca, a medida ou a espessura do que você procura?\"). Acione o transbordo para o humano APENAS se o cliente não souber explicar ou a segunda tentativa falhar.\n" +
                 "- TELE-ENTREGA: Quando alguém perguntar de tele-entrega, responda EXATAMENTE: 'Infelizmente ainda não possuímos tele-entrega 😕' (ou use outro emoji similar).\n" +
                 "- LOCALIZAÇÃO: Se pedir endereço, envie o endereço amigavelmente e obrigatoriamente inclua a tag exata no final da resposta: [ACTION: SEND_LOCATION] (pois o sistema interceptará essa tag para enviar o mapa do GPS). Exemplo: 'Nossa loja fica na Rua Osvaldo Cruz, 417, Centro, Igrejinha, pertinho da Rua Coberta! [ACTION: SEND_LOCATION]'\n" +
                 "- LISTAGEM DE MARCAS: Se o cliente perguntar 'tem quais marcas?' ou 'quais opções tem?', VERIFIQUE O ESTOQUE ENVIADO E SEMPRE CITE TODAS AS MARCAS que constam ali naquele momento, para não perder vendas. Exemplo: 'Temos opções da Zagonel, Sintex e Lorenzetti!'.\n" +
@@ -92,6 +89,12 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
                 (isFirstMessage
                     ? "Esta é a PRIMEIRA mensagem. Seja humano."
                     : "Aja como humano. Responda diretamente e seja natural.");
+
+            // Otimização de Janela de Contexto (Rolling Window)
+            // Se o array exceder 12 mensagens, remove as mais antigas mantendo as 6 recentes do usuario e 6 do bot
+            while (chatHistory.length > 12) {
+                chatHistory.shift();
+            }
 
             // 2. Build contents array with alternating roles
             const contents = [];
@@ -307,7 +310,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 
 ### REGRAS CRÍTICAS DE CONTEXTO E FUNIL:
 1. CONTEXTO ACUMULATIVO (O FUNIL): A busca não se baseia apenas na última frase. Se o cliente falou de "torneira" antes, e agora disse "parede" ou "elétrica", VOCÊ DEVE manter a palavra primária ("torneira") junto com a novidade ("torneira parede elétrica").
-2. MUDANÇA DE ASSUNTO (RESET): Se o cliente mudou radicalmente para outro objeto (estava em torneira e foi para cimento), abandone o histórico antigo. Foque 100% no assunto novo ("cimento cp2").
+2. ATENÇÃO AO NOVO ASSUNTO: Se a última mensagem do usuário mudar drasticamente de categoria (ex: estava falando de torneiras e agora pediu tintas), EXTRAIA APENAS OS TERMOS DA NOVA MENSAGEM. Ignore completamente os produtos antigos para não sujar a busca.
 3. PALAVRAS-CHAVE CURTAS: Não transforme perguntas em buscas longas. Extraia a essência. Invés de "quero uma torneira zagonel de pia", retorne ["torneira zagonel pia", "torneira de pia"].
 4. SINÔNIMOS ÚTEIS: Se houver gíria ou erro comum (ex "tornera"), use a grafia correta na busca ("torneira").
 
