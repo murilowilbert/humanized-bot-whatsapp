@@ -155,6 +155,7 @@ async function searchProductInSheet(keywordsArray) {
             { name: 'modelo/produto', weight: 1.0 },
             { name: 'tags para busca (sinônimos)', weight: 0.9 },
             { name: 'categoria', weight: 0.8 },
+            { name: 'atributos físicos', weight: 0.4 },
             { name: 'características principais', weight: 0.3 },
             { name: 'código', weight: 0.9 },
             { name: 'codigo', weight: 0.9 },
