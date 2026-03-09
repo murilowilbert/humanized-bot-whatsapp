@@ -146,20 +146,19 @@ async function searchProductInSheet(keywordsArray) {
         }
     }
 
-    // Configuração do Fuse.js
     const options = {
         includeScore: true,
-        threshold: 0.3, // Grau de Fuzzy mais estrito para evitar falsos positivos
+        threshold: 0.4, // Threshold mais permissivo (abraça erros de digitação leves)
         ignoreLocation: true,
         keys: [
-            { name: 'modelo/produto', weight: 1.0 },
-            { name: 'tags para busca (sinônimos)', weight: 0.9 },
-            { name: 'categoria', weight: 0.8 },
-            { name: 'atributos físicos', weight: 0.4 },
+            { name: 'modelo/produto', weight: 2.0 },
+            { name: 'tags para busca (sinônimos)', weight: 1.5 },
+            { name: 'categoria', weight: 1.5 },
+            { name: 'atributos físicos', weight: 0.3 },
             { name: 'características principais', weight: 0.3 },
-            { name: 'código', weight: 0.9 },
-            { name: 'codigo', weight: 0.9 },
-            { name: 'ean', weight: 0.9 }
+            { name: 'código', weight: 2.0 },
+            { name: 'codigo', weight: 2.0 },
+            { name: 'ean', weight: 2.0 }
         ]
     };
 
