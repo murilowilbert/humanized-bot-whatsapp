@@ -313,6 +313,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 3. PALAVRAS-CHAVE CURTAS: Não transforme perguntas em buscas longas. Extraia a essência. Invés de "quero uma torneira zagonel de pia", retorne ["torneira zagonel pia", "torneira de pia"].
 4. SINÔNIMOS ÚTEIS: Se houver gíria ou erro comum (ex "tornera"), use a grafia correta na busca ("torneira").
 5. REMOÇÃO DE STOP WORDS: Você DEVE remover todas as preposições e artigos (ex: "de", "para", "com", "o", "a", "um") dos termos de busca. Foque apenas nos substantivos e adjetivos principais. Exemplo: se o cliente pedir "fio para chuveiro", retorne ["fio chuveiro", "cabo chuveiro"].
+6. IGNORE SAUDAÇÕES: Ignore completamente palavras de cortesia e saudações que vierem na mensagem ("bom dia", "boa tarde", "oi", "tudo bem", "obrigado"). Elas destroem a busca no banco de dados.
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"

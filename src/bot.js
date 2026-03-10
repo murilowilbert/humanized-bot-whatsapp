@@ -542,7 +542,6 @@ async function setupEvents() {
                     expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                     let cleanSearchTermsArray = expandedQueryArray.length > 0 ? expandedQueryArray : [searchKeywords];
-                    if (!cleanSearchTermsArray.includes(searchKeywords)) cleanSearchTermsArray.push(searchKeywords);
                     // Remove \n de todos os itens do array
                     cleanSearchTermsArray = cleanSearchTermsArray.map(t => t.replace(/\n/g, ' ').trim());
 
