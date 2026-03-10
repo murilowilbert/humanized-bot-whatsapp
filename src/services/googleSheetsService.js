@@ -148,7 +148,8 @@ async function searchProductInSheet(keywordsArray) {
 
     const options = {
         includeScore: true,
-        threshold: 0.4, // Threshold mais permissivo (abraça erros de digitação leves)
+        threshold: 0.2, // Configuração rigorosa para evitar falsos matches
+        minMatchCharLength: 3, // Ignora matches em preposições (do, de, a)
         ignoreLocation: true,
         keys: [
             { name: 'modelo/produto', weight: 2.0 },
@@ -177,8 +178,33 @@ async function searchProductInSheet(keywordsArray) {
         return [uniqueKey, r];
     })).values());
 
-    // Ordena pelo menor 'score' do Fuse.js (menor = melhor match)
-    uniqueResults.sort((a, b) => a.score - b.score);
+    // Ordenação e Boosting de Exact Match
+    // Se a palavra procurada bater exatamente no início de um modelo/produto ou tag, aquele item sobe pro topo
+    uniqueResults.sort((a, b) => {
+        // Prioridade 1: Match numérico (EAN ou Código)
+        const isA_CodeMatch = /^\d+$/.test(searchTerms[0]) && a.item['código'] && a.item['código'].toString().includes(searchTerms[0]);
+        const isB_CodeMatch = /^\d+$/.test(searchTerms[0]) && b.item['código'] && b.item['código'].toString().includes(searchTerms[0]);
+        if (isA_CodeMatch && !isB_CodeMatch) return -1;
+        if (isB_CodeMatch && !isA_CodeMatch) return 1;
+
+        // Prioridade 2: Match exato na palavra-chave primária
+        const primaryTermStart = searchTerms[0] ? searchTerms[0].toLowerCase().split(' ')[0] : '';
+        if (primaryTermStart.length > 2) {
+            const aNameMatch = a.item['modelo/produto'] && a.item['modelo/produto'].toLowerCase().startsWith(primaryTermStart);
+            const aTagMatch = a.item['tags para busca (sinônimos)'] && a.item['tags para busca (sinônimos)'].toLowerCase().includes(primaryTermStart);
+            const isA_Boosted = aNameMatch || aTagMatch;
+
+            const bNameMatch = b.item['modelo/produto'] && b.item['modelo/produto'].toLowerCase().startsWith(primaryTermStart);
+            const bTagMatch = b.item['tags para busca (sinônimos)'] && b.item['tags para busca (sinônimos)'].toLowerCase().includes(primaryTermStart);
+            const isB_Boosted = bNameMatch || bTagMatch;
+
+            if (isA_Boosted && !isB_Boosted) return -1;
+            if (isB_Boosted && !isA_Boosted) return 1;
+        }
+
+        // Prioridade 3: Score padrão do Fuse.js
+        return a.score - b.score;
+    });
 
     // Retorna no formato legado para compatibilidade: { item, matchCount }
     return uniqueResults.slice(0, 15).map(r => ({
@@ -244,7 +270,8 @@ async function searchCategoryInSheet(keywordsArray) {
 
     const options = {
         includeScore: true,
-        threshold: 0.3, // Threshold mais baixo (mais estrito)
+        threshold: 0.2, // Threshold mais de precisão
+        minMatchCharLength: 3, // Proteção contra colisão de preposição
         ignoreLocation: true,
         keys: [
             { name: 'categoria_geral', weight: 1.0 },
@@ -265,7 +292,17 @@ async function searchCategoryInSheet(keywordsArray) {
     // Desduplicação estrita:
     const uniqueResults = Array.from(new Map(allResults.map(r => [r.item['categoria_geral'], r])).values());
 
-    uniqueResults.sort((a, b) => a.score - b.score);
+    uniqueResults.sort((a, b) => {
+        // Boost de Match Exato em Categorias
+        const primaryTerm = searchTerms[0] ? searchTerms[0].toLowerCase() : '';
+        const isA_Boosted = a.item['categoria_geral'] && a.item['categoria_geral'].toLowerCase().includes(primaryTerm);
+        const isB_Boosted = b.item['categoria_geral'] && b.item['categoria_geral'].toLowerCase().includes(primaryTerm);
+
+        if (isA_Boosted && !isB_Boosted) return -1;
+        if (isB_Boosted && !isA_Boosted) return 1;
+
+        return a.score - b.score;
+    });
 
     if (uniqueResults && uniqueResults.length > 0) {
         return uniqueResults.slice(0, 5).map(r => r.item);

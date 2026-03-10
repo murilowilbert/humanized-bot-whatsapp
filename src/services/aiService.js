@@ -312,6 +312,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 2. ATENÇÃO AO NOVO ASSUNTO: Se a última mensagem do usuário mudar drasticamente de categoria (ex: estava falando de torneiras e agora pediu tintas), EXTRAIA APENAS OS TERMOS DA NOVA MENSAGEM. Ignore completamente os produtos antigos para não sujar a busca.
 3. PALAVRAS-CHAVE CURTAS: Não transforme perguntas em buscas longas. Extraia a essência. Invés de "quero uma torneira zagonel de pia", retorne ["torneira zagonel pia", "torneira de pia"].
 4. SINÔNIMOS ÚTEIS: Se houver gíria ou erro comum (ex "tornera"), use a grafia correta na busca ("torneira").
+5. REMOÇÃO DE STOP WORDS: Você DEVE remover todas as preposições e artigos (ex: "de", "para", "com", "o", "a", "um") dos termos de busca. Foque apenas nos substantivos e adjetivos principais. Exemplo: se o cliente pedir "fio para chuveiro", retorne ["fio chuveiro", "cabo chuveiro"].
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"
