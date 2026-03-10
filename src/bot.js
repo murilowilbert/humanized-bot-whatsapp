@@ -245,7 +245,7 @@ async function setupEvents() {
             return;
         }
 
-        // Edge Case 8: Tratamento do 'fromMe' (Atendente Web)
+        // Edge Case 8: Tratamento do 'fromMe' (Atendente Web / Human Takeover)
         if (msg.key.fromMe) {
             const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
             if (myMsg.trim() === '!bot') {
@@ -254,7 +254,7 @@ async function setupEvents() {
                 await sock.sendMessage(jid, { text: "✅ Bot reativado para este chat." });
             } else {
                 userPausedStates.set(jid, Date.now());
-                console.log(`[Human Takeover] Atendente respondeu manualmente. Bot mutado para ${headers}`);
+                console.log(`[Human Takeover] Atendente assumiu manualmente pelo aparelho. Bot mutado para o cliente ${headers}`);
             }
             return;
         }
