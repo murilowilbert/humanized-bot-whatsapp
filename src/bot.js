@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const P = require('pino');
+const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
