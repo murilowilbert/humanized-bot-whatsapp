@@ -148,6 +148,7 @@ async function searchProductInSheet(keywordsArray) {
 
     const options = {
         includeScore: true,
+        useExtendedSearch: true, // Habilitado para Token Search (AND Lógico)
         threshold: 0.2, // Configuração rigorosa para evitar falsos matches
         minMatchCharLength: 3, // Ignora matches em preposições (do, de, a)
         ignoreLocation: true,
@@ -168,7 +169,10 @@ async function searchProductInSheet(keywordsArray) {
 
     // Busca iterativa: em vez de strings gigantes que diluem score, buscamos termo a termo
     for (const term of searchTerms) {
-        const results = fuse.search(term);
+        // Token Search (AND Lógico): Quebra a string por espaços para forçar match parcial em múltiplos tokens isolados ignorando a ordem
+        const tokenizedTerm = term.trim().split(/\s+/).join(' ');
+
+        const results = fuse.search(tokenizedTerm);
         allResults = allResults.concat(results);
     }
 
@@ -270,6 +274,7 @@ async function searchCategoryInSheet(keywordsArray) {
 
     const options = {
         includeScore: true,
+        useExtendedSearch: true,
         threshold: 0.2, // Threshold mais de precisão
         minMatchCharLength: 3, // Proteção contra colisão de preposição
         ignoreLocation: true,
@@ -285,7 +290,9 @@ async function searchCategoryInSheet(keywordsArray) {
 
     // Busca iterativa de Categorias
     for (const term of searchTerms) {
-        const results = fuse.search(term);
+        // Token Search (AND lógico) formatando a string do termo
+        const tokenizedTerm = term.trim().split(/\s+/).join(' ');
+        const results = fuse.search(tokenizedTerm);
         allResults = allResults.concat(results);
     }
 

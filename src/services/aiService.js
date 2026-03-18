@@ -314,10 +314,11 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 2. ATENÇÃO AO NOVO ASSUNTO: Se a última mensagem do usuário mudar drasticamente de categoria (ex: estava falando de torneiras e agora pediu tintas), EXTRAIA APENAS OS TERMOS DA NOVA MENSAGEM. Ignore completamente os produtos antigos para não sujar a busca.
 3. PALAVRAS-CHAVE CURTAS: Não transforme perguntas em buscas longas. Extraia a essência. Invés de "quero uma torneira zagonel de pia", retorne ["torneira zagonel pia", "torneira de pia"].
 4. Variações de Cauda Longa: GERE MÚLTIPLAS VARIAÇÕES da frase completa do usuário. Inclua a versão exata que ele digitou e variações com preposições alternativas (ex: se pedir "fio pra chuveiro", retorne ["fio para chuveiro", "fio de chuveiro", "cabo para chuveiro", "fio chuveiro"]).
-5. DIRETRIZ DE PRECISÃO: É ESTRITAMENTE PROIBIDO fatiar a string e enviar termos genéricos isolados. NUNCA adicione ["chuveiro"] sozinho na array de busca se o pedido original for "fio para chuveiro". Mantenha o contexto.
+5. DIRETRIZ DE PRECISÃO: É ESTRITAMENTE PROIBIDO fatiar a string e enviar termos genéricos isolados A MENOS QUE se trate de atributos chaves (veja regra 9).
 6. REMOÇÃO DE STOP WORDS EXTREMAS: Você DEVE remover preposições que sujem a busca quando não forem vitais, mas mantenha-as se fizerem parte da Cauda Longa do item 4.
 7. IGNORE SAUDAÇÕES: Ignore completamente palavras de cortesia e saudações que vierem na mensagem ("bom dia", "boa tarde", "oi", "tudo bem", "obrigado"). Elas destroem a busca no banco de dados.
 8. LIMPEZA DE TERMOS: É ESTRITAMENTE PROIBIDO incluir adjetivos de valor, preço, tamanho ou qualidade (ex: "barato", "caro", "econômico", "pequeno") na array de busca. Retorne APENAS substantivos e especificações técnicas diretas. Exemplo: se o cliente pedir "chuveiro barato", a sua array deve conter apenas ["chuveiro"]. A análise de preço será feita posteriormente pela IA principal.
+9. QUEBRA DE TOKENS: Quando o usuário pedir um produto com um atributo específico (ex: "chuveiro com pressurizador", "torneira de metal"), ALÉM de gerar a combinação, você DEVE OBRIGATORIAMENTE incluir na array os atributos chave de forma isolada e seus sinônimos. Exemplo: ["chuveiro pressurizador", "pressurizador", "pressurizada", "turbo"]. Isso garantirá que o motor de busca encontre o atributo mesmo se o nome principal estiver escrito diferente na planilha.
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"
