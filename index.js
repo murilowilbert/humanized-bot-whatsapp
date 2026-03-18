@@ -11,4 +11,11 @@ server.startServer();
 scraperService.initializeBrowser();
 
 console.log("Sistema Ferragem Marlene iniciado.");
-console.log("Aguardando inicialização do Bot via Painel Web...");
+
+// 3. Auto-Boot Trigger
+if (server.isBotEnabled()) {
+    console.log("[Auto-Boot] Estado padrão ligado (Power=true). Inicializando bot automaticamente o painel web...");
+    client.initialize();
+} else {
+    console.log("Aguardando inicialização manual do Bot via Painel Web...");
+}
