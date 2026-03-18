@@ -969,7 +969,7 @@ async function initialize() {
             version,
             auth: state,
             printQRInTerminal: false,
-            logger: P({ level: 'silent' }), // Suppress detailed terminal logs from baileys
+            logger: pino({ level: 'silent' }), // Suppress detailed terminal logs from baileys
             browser: Browsers.baileys('Desktop'),
             syncFullHistory: false,
             generateHighQualityLinkPreview: true
