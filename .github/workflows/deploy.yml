@@ -58,14 +58,14 @@ jobs:
             docker run -d -p 3000:3000 --env-file ~/bot-ferragem/.env -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys -v ~/bot-ferragem/dev.db:/app/dev.db --name bot-marlene bot-image
             
             # Executa os comandos extras que você pediu por garantia na raiz do container
-            sudo docker cp ~/bot-ferragem/.env bot-marlene:/app/.env
+            sudo docker cp .env bot-marlene:/app/.env
             sudo docker restart bot-marlene
             
-            # Aguarda o servidor Node.js ligar portas (espera 10 segundos)
-            sleep 10
+            # Aguarda o container respirar
+            sleep 15
             
-            # Liga o modo teste, liga o bot, recusa estoque total e INICIA automaticamente sem painel
-            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"power","enabled":true}'
-            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"test","enabled":true}'
-            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"fullstock","enabled":false}'
-            curl -X POST http://localhost:3000/api/start
+            # Liga o modo teste, liga o bot, recusa estoque total e INICIA com tentativas automáticas (retry)
+            curl --retry 6 --retry-connrefused --retry-delay 10 -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"power","enabled":true}'
+            curl --retry 3 --retry-connrefused --retry-delay 5 -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"test","enabled":true}'
+            curl --retry 3 --retry-connrefused --retry-delay 5 -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"fullstock","enabled":false}'
+            curl --retry 3 --retry-connrefused --retry-delay 5 -X POST http://localhost:3000/api/start
