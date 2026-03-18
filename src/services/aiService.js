@@ -310,7 +310,7 @@ async function expandSearchQuery(userMessage, recentHistory = []) {
 Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para gerar ESTRITAMENTE um array JSON com palavras-chave curtas focadas em busca textual.
 
 ### REGRAS CRÍTICAS DE CONTEXTO E FUNIL:
-1. CONTEXTO ACUMULATIVO (O FUNIL): A busca não se baseia apenas na última frase. Se o cliente falou de "torneira" antes, e agora disse "parede" ou "elétrica", VOCÊ DEVE manter a palavra primária ("torneira") junto com a novidade ("torneira parede elétrica").
+1. CONTEXTO ACUMULATIVO (O FUNIL): A busca não se baseia apenas na última frase. Se o cliente falou de "torneira" antes, e agora disse "parede" ou "elétrica", VOCÊ DEVE manter a palavra primária ("torneira") junto com a novidade ("torneira parede elétrica"). Analise o histórico recente. Se o usuário usar pronomes como "esse", "aquilo", ou "pra isso", identifique o produto anterior (ex: fio 6mm) e gere a array de busca baseada no item completo (ex: ["conector 6mm", "conector porcelana"]).
 2. ATENÇÃO AO NOVO ASSUNTO: Se a última mensagem do usuário mudar drasticamente de categoria (ex: estava falando de torneiras e agora pediu tintas), EXTRAIA APENAS OS TERMOS DA NOVA MENSAGEM. Ignore completamente os produtos antigos para não sujar a busca.
 3. PALAVRAS-CHAVE CURTAS: Não transforme perguntas em buscas longas. Extraia a essência. Invés de "quero uma torneira zagonel de pia", retorne ["torneira zagonel pia", "torneira de pia"].
 4. Variações de Cauda Longa: GERE MÚLTIPLAS VARIAÇÕES da frase completa do usuário. Inclua a versão exata que ele digitou e variações com preposições alternativas (ex: se pedir "fio pra chuveiro", retorne ["fio para chuveiro", "fio de chuveiro", "cabo para chuveiro", "fio chuveiro"]).
@@ -324,7 +324,7 @@ Mensagem Atual: "${sanitizedMessage}"
 Histórico Recente (Opcional):
 ${historyText ? historyText : "Nenhum histórico recente."}
 
-RETORNE APENAS O ARRAY JSON. NADA A MAIS.
+RETORNE APENAS O ARRAY JSON. NADA A MAIS. Você deve retornar ÚNICA E EXCLUSIVAMENTE um array JSON válido. Sem formatação markdown (\`\`\`json), sem explicações, sem quebras de linha literais dentro das aspas.
 Exemplo 1 (Acumulando): ["torneira de parede", "torneira elétrica parede"]
 Exemplo 2 (Mudando Assunto): ["cimento cp2", "cimento votoran"]
 Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
@@ -332,7 +332,12 @@ Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
         const result = await model.generateContent(prompt);
         const rawResponse = result.response.text();
         // Regex para tirar os blocos de código se a IA mandar (ex ```json ["1"] ```)
-        const cleanJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+        let cleanJson = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+            cleanJson = arrayMatch[0];
+        }
+        cleanJson = cleanJson.replace(/[\r\n\t]/g, ''); // Sanitização agressiva para manter formato válido
         const keywordsArray = JSON.parse(cleanJson);
 
         const lowerMsg = sanitizedMessage.toLowerCase();
