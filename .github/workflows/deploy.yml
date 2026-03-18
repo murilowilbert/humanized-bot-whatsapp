@@ -35,11 +35,14 @@ jobs:
             cd ~/bot-ferragem
             # Constrói a imagem do Docker com o código novo
             docker build -t bot-image .
+            
             # Para e deleta a versão antiga do bot (se existir)
             docker stop bot-marlene || true
             docker rm bot-marlene || true
+            
             # Certifica de que o arquivo SQlite exista antes no servidor pra poder montar
             touch ~/bot-ferragem/dev.db
+            
             # Criar arquivo .env dinamicamente com os secrets
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > ~/bot-ferragem/.env
             echo "WHATSAPP_PHONE_NUMBER=${{ secrets.WHATSAPP_PHONE_NUMBER }}" >> ~/bot-ferragem/.env
@@ -50,5 +53,19 @@ jobs:
             echo "DASHBOARD_PASS=${{ secrets.DASHBOARD_PASS }}" >> ~/bot-ferragem/.env
             echo "DATABASE_URL=\"file:./dev.db\"" >> ~/bot-ferragem/.env
             echo "GOOGLE_SHEETS_CSV_URL=${{ secrets.GOOGLE_SHEETS_CSV_URL }}" >> ~/bot-ferragem/.env
-            # Roda a versão nova em segundo plano usando --env-file
+            
+            # Roda a versão nova em segundo plano
             docker run -d -p 3000:3000 --env-file ~/bot-ferragem/.env -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys -v ~/bot-ferragem/dev.db:/app/dev.db --name bot-marlene bot-image
+            
+            # Executa os comandos extras que você pediu por garantia na raiz do container
+            sudo docker cp ~/bot-ferragem/.env bot-marlene:/app/.env
+            sudo docker restart bot-marlene
+            
+            # Aguarda o servidor Node.js ligar portas (espera 10 segundos)
+            sleep 10
+            
+            # Liga o modo teste, liga o bot, recusa estoque total e INICIA automaticamente sem painel
+            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"power","enabled":true}'
+            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"test","enabled":true}'
+            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"fullstock","enabled":false}'
+            curl -X POST http://localhost:3000/api/start

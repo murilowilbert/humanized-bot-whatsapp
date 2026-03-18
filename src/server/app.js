@@ -17,8 +17,8 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
 // State
-let botEnabled = false;
-let testMode = false;
+let botEnabled = true;
+let testMode = true;
 let fullStockEnabled = false;
 const ALLOWED_NUMBERS = ['555199106294', '189524122574884', '555196870986', '555199078225', '224704216436825']; // User's numbers
 
