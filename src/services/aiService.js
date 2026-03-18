@@ -317,6 +317,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 5. DIRETRIZ DE PRECISÃO: É ESTRITAMENTE PROIBIDO fatiar a string e enviar termos genéricos isolados. NUNCA adicione ["chuveiro"] sozinho na array de busca se o pedido original for "fio para chuveiro". Mantenha o contexto.
 6. REMOÇÃO DE STOP WORDS EXTREMAS: Você DEVE remover preposições que sujem a busca quando não forem vitais, mas mantenha-as se fizerem parte da Cauda Longa do item 4.
 7. IGNORE SAUDAÇÕES: Ignore completamente palavras de cortesia e saudações que vierem na mensagem ("bom dia", "boa tarde", "oi", "tudo bem", "obrigado"). Elas destroem a busca no banco de dados.
+8. LIMPEZA DE TERMOS: É ESTRITAMENTE PROIBIDO incluir adjetivos de valor, preço, tamanho ou qualidade (ex: "barato", "caro", "econômico", "pequeno") na array de busca. Retorne APENAS substantivos e especificações técnicas diretas. Exemplo: se o cliente pedir "chuveiro barato", a sua array deve conter apenas ["chuveiro"]. A análise de preço será feita posteriormente pela IA principal.
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"
