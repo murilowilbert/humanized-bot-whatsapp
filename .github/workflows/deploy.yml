@@ -52,7 +52,8 @@ jobs:
             echo "DASHBOARD_USER=${{ secrets.DASHBOARD_USER }}" >> ~/bot-ferragem/.env
             echo "DASHBOARD_PASS=${{ secrets.DASHBOARD_PASS }}" >> ~/bot-ferragem/.env
             echo "DATABASE_URL=\"file:./dev.db\"" >> ~/bot-ferragem/.env
-            echo "GOOGLE_SHEETS_CSV_URL=${{ secrets.GOOGLE_SHEETS_CSV_URL }}" >> ~/bot-ferragem/.env
+            echo "GOOGLE_SHEETS_URL_PRINCIPAL=${{ secrets.GOOGLE_SHEETS_URL_PRINCIPAL }}" >> ~/bot-ferragem/.env
+            echo "GOOGLE_SHEETS_URL_GERAL=${{ secrets.GOOGLE_SHEETS_URL_GERAL }}" >> ~/bot-ferragem/.env
             
             # Roda a versão nova em segundo plano
             docker run -d -p 3000:3000 --env-file ~/bot-ferragem/.env -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys -v ~/bot-ferragem/dev.db:/app/dev.db --name bot-marlene bot-image
