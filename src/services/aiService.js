@@ -60,7 +60,7 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
             // Injecting current date context
             const currentDateTime = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
             const currentDay = new Date().toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' });
-            const systemTimeContext = `INFORMAÇÃO DO SISTEMA: Hoje é ${currentDay}, ${currentDateTime}. Use EXCLUSIVAMENTE esta informação para responder qualquer pergunta sobre horários de funcionamento, abertura ou fechamento da loja.`;
+            const systemTimeContext = `CONTEXTO TEMPORAL: Hoje é ${currentDay}, ${currentDateTime}. O horário de funcionamento da loja é de Segunda a Sexta das 08:00 às 18:00, e Sábados das 08:00 às 12:00. Use APENAS este relógio para informar se estamos abertos ou fechados. Se o cliente perguntar fora do horário, avise que o atendimento humano voltará no próximo dia útil.`;
 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
                 "- REGRA ANTI-LOOP (ABSOLUTA): Verifique o histórico de mensagens. Se VOCÊ acabou de fazer uma pergunta de afunilamento na mensagem anterior e o USUÁRIO acabou de RESPONDER a essa preferência, VOCÊ É ESTRITAMENTE PROIBIDO de fazer uma nova pergunta genérica. Você DEVE cruzar a resposta do usuário com os [ESTOQUE ATUALIZADO], selecionar as 2 ou 3 opções que melhor atendem ao pedido, informar os preços diretamente e explicar brevemente a diferença entre elas.\n" +
