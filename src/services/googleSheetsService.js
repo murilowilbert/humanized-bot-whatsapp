@@ -234,9 +234,15 @@ async function getCachedCategoryData() {
     console.log("[Google Sheets] Baixando planilha secundária de categorias...");
     const data = await fetchGoogleSheetCSV(csvUrl);
     if (data) {
-        categoryCache = data;
+        // Blindagem Rígida de Cache: Filtrar dados sujos que vêm do Google Sheets
+        const cleanData = data.filter(row => {
+            const catName = row['categoria_geral'];
+            return catName && catName.trim() !== '' && catName.toLowerCase() !== 'undefined';
+        });
+
+        categoryCache = cleanData;
         lastCategoryCacheTime = now;
-        console.log(`[Google Sheets] ✅ Cache de Categorias Atualizado com Sucesso: ${data.length} categorias/triagens.`);
+        console.log(`[Google Sheets] ✅ Cache de Categorias Atualizado com Sucesso: ${cleanData.length} categorias/triagens válidas.`);
     }
     return categoryCache;
 }
