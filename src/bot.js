@@ -572,7 +572,7 @@ async function setupEvents() {
                     stockContext = stockContext.slice(0, 15);
                     console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
 
-                    categoryMatch = null; // A Triagem Estratégica agora é feita pela IA (Fim do Hardcode Triage Bypass)
+                    categoryMatch = geralMatches && geralMatches.length > 0 ? geralMatches[0] : null; // Prioridade Absoluta restaurada para o DB de Categorias
                 }
 
                 if (intent === 'SEARCH' || intent === 'ORDER_RESERVE') {
