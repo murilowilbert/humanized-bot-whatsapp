@@ -62,11 +62,17 @@ jobs:
             sudo docker cp .env bot-marlene:/app/.env
             sudo docker restart bot-marlene
             
-            # Aguarda o container respirar
-            sleep 15
+            # Aguarda o container ligar o banco de dados e o navegador invisível
+            echo "Aguardando o bot ligar o motor..."
+            sleep 20
             
-            # Liga o modo teste, liga o bot, recusa estoque total e INICIA com tentativas automáticas (retry)
-            curl --retry 6 --retry-connrefused --retry-delay 10 -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"power","enabled":true}'
-            curl --retry 3 --retry-connrefused --retry-delay 5 -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"test","enabled":true}'
-            curl --retry 3 --retry-connrefused --retry-delay 5 -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"fullstock","enabled":false}'
-            curl --retry 3 --retry-connrefused --retry-delay 5 -X POST http://localhost:3000/api/start
+            # Fica testando a porta a cada 5 segundos até o bot responder (espera no máximo 2 minutos)
+            timeout 120 bash -c 'while ! curl -s http://localhost:3000 > /dev/null; do echo "Ainda carregando..."; sleep 5; done'
+            
+            echo "Servidor 100% online! Disparando configurações..."
+            
+            # Agora os comandos vão entrar de primeira, sem falhar
+            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"power","enabled":true}'
+            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"test","enabled":true}'
+            curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"fullstock","enabled":false}'
+            curl -X POST http://localhost:3000/api/start
