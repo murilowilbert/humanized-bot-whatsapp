@@ -503,15 +503,13 @@ async function setupEvents() {
 
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
 
-                // Pivot 2: Roteamento de Intenção
-                const intent = await aiService.classifyIntent(searchKeywords);
-
+                // Pivot 2: Roteamento de Intenção (Removido)
+                // O fluxo unificado vai direto para a Busca
                 let categoryMatch = null;
                 let stockContext = [];
                 let finalVisualKeyword = null;
 
-                if (intent === 'SEARCH' || intent === 'ORDER_RESERVE') {
-                    expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
+                expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                     let cleanSearchTermsArray = expandedQueryArray.length > 0 ? expandedQueryArray : [searchKeywords];
                     // Remove \n de todos os itens do array
@@ -542,9 +540,6 @@ async function setupEvents() {
                     stockContext = stockContext.slice(0, 15);
                     console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
 
-                }
-
-                if (intent === 'SEARCH' || intent === 'ORDER_RESERVE') {
                     // Feature 8: Visual Verification com Gabarito (Oracle Master)
                     if (lastMedia && lastMedia.mimeType.startsWith('image/') && stockContext && stockContext.length > 0) {
                         console.log("[Semantic Pre-Ranking] Refinando opções da busca inicial...");
@@ -645,9 +640,6 @@ async function setupEvents() {
                             console.log("[Verificação Visual] Nenhuma foto de gabarito encontrada no HD para os top candidatos.");
                         }
                     }
-                } else if (intent === 'FAQ') {
-                    console.log(`[Intent Router] Intenção de 'FAQ' detectada. Ignorando consulta de db/estoque.`);
-                }
 
                 // O Fluxo Definitivo de Triagem e Handoff (Delegação para o LLM)
                 // O Passo B hardcoded (State Machine) foi removido em favor da inteligência de contexto livre do LLM.
@@ -803,21 +795,9 @@ async function setupEvents() {
                     return; // Encerra o fluxo aqui para não pedir avaliação nem iniciar timer de inatividade
                 }
 
-                // C) Rating
-                if (combinedText.toLowerCase().includes('obrigado') || combinedText.toLowerCase().includes('valeu')) {
-                    await sock.sendMessage(jid, { text: "Fico feliz em ajudar! De 0 a 5, qual sua nota para meu atendimento?" });
-                }
-
-                // D) Save Rating
-                if (/^[1-5]$/.test(combinedText.trim())) {
-                    metricsService.addRating(combinedText.trim(), "Via Whatsapp");
-                    await sock.sendMessage(jid, { text: "Obrigado pela avaliação! ⭐" });
-                }
-
                 // E) Set Inactivity Follow-up
                 const isConversationEnd = combinedText.toLowerCase().includes('obrigado') ||
-                    combinedText.toLowerCase().includes('valeu') ||
-                    /^[1-5]$/.test(combinedText.trim());
+                    combinedText.toLowerCase().includes('valeu');
 
                 if (!isConversationEnd) {
                     // Check if we literally just asked this a few minutes ago.
