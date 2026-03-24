@@ -547,15 +547,35 @@ async function setupEvents() {
 
                     console.log(`[Unified Search] Avaliando Triagem Prioritária para: [${cleanSearchTermsArray.join(', ')}]`);
 
+                    const sessionData = userSessions.get(jid) || { state: 'DEFAULT' };
+                    const isAnsweringTriage = sessionData.state === 'AWAITING_TRIAGE_ANSWER';
+
+                    if (isAnsweringTriage) {
+                        console.log(`[State Machine] Bypass de Curto-Circuito: Usuário respondendo à triagem anterior. Estado resetado para fluxo de vendas normal.`);
+                        userSessions.set(jid, { ...sessionData, state: 'DEFAULT' });
+                        
+                        // Garante a concatenação mecânica do assunto original com a resposta (ex: vaso + quadrado)
+                        const lastUserMsg = [...recentHistory].reverse().find(h => h.role === 'user');
+                        if (lastUserMsg && lastUserMsg.content) {
+                            const forcedConcat = `${lastUserMsg.content} ${searchKeywords}`.trim();
+                            cleanSearchTermsArray.unshift(forcedConcat);
+                            console.log(`[Bypass Triagem] Concatenação Forçada Injetada: "${forcedConcat}"`);
+                        }
+                    }
+
                     let principalMatches = await stockService.searchProduct(cleanSearchTermsArray);
-                    const geralMatches = await stockService.searchCategory(cleanSearchTermsArray);
+                    let geralMatches = await stockService.searchCategory(cleanSearchTermsArray);
 
                     // Prioridade do Roteador: Ignorando o Zero-Context Handoff para Triagem
-                    if (principalMatches && principalMatches.length === 0 && geralMatches && geralMatches.length > 0) {
+                    if (!isAnsweringTriage && principalMatches && principalMatches.length === 0 && geralMatches && geralMatches.length > 0) {
                         console.log(`[Roteador] 0 Itens no Principal, mas Categoria bateu. Ignorando Handoff imediato para forçar Triagem Genérica.`);
-                    } else if (geralMatches && geralMatches.length > 0) {
+                    } else if (!isAnsweringTriage && geralMatches && geralMatches.length > 0) {
                         console.log(`[Curto-Circuito] Match de Categoria detectado! Abortando busca no BD Principal para focar na triagem.`);
                         principalMatches = []; // Esvazia o array principal para forçar a triagem
+                    }
+                    
+                    if (isAnsweringTriage) {
+                         geralMatches = []; // Previne bypass absoluto do Passo B na rodada de exibição de resultados
                     }
 
                     let combinedContext = [];
@@ -579,6 +599,7 @@ async function setupEvents() {
                     console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
 
                     categoryMatch = geralMatches && geralMatches.length > 0 ? geralMatches[0] : null; // Prioridade Absoluta restaurada para o DB de Categorias
+
                 }
 
                 if (intent === 'SEARCH' || intent === 'ORDER_RESERVE') {
