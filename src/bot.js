@@ -193,6 +193,15 @@ async function setupEvents() {
             msg.message?.imageMessage?.caption ||
             '';
 
+        const quotedObj = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        if (quotedObj) {
+            const quotedText = quotedObj.conversation || quotedObj.extendedTextMessage?.text || quotedObj.imageMessage?.caption || '';
+            if (quotedText && textContent) {
+                 textContent = `${textContent} [Respondendo a: ${quotedText}]`;
+                 console.log(`[Parser] Mensagem Citada Injetada no Contexto: "${textContent}"`);
+            }
+        }
+
         // 1. Extração Simples do ID
         const rawJid = msg.key?.remoteJid;
         if (!rawJid) return;
@@ -298,44 +307,7 @@ async function setupEvents() {
             return;
         }
 
-        // 0.4 State Machine: AWAITING_TRIAGE_ANSWER
-        if (userSessions.has(jid) && userSessions.get(jid).state === 'AWAITING_TRIAGE_ANSWER') {
-            const sessionData = userSessions.get(jid);
-            const timeElapsedMs = Date.now() - sessionData.stateTimestamp;
-
-            // State Machine Timeout (25 minutos)
-            if (timeElapsedMs > 25 * 60 * 1000) {
-                console.log(`[State Machine] Usuário ${headers} demorou mais de 25min para responder. Resetando estado pendente.`);
-                userSessions.delete(jid);
-                // Continua o fluxo normal como se fosse nova mensagem abaixo
-            } else {
-                // Context Switching Detection (Anti-Stuck)
-                const intentCheckText = lowerText.substring(0, 30);
-                const isSwitchingContext = /tem |e sobre|queria|vocês têm|voces tem|que tipo de/i.test(intentCheckText);
-
-                if (isSwitchingContext) {
-                    console.log(`[State Machine] Usuário ${headers} mudou de ideia ("${intentCheckText}"). Abortando Triagem e iniciando nova busca.`);
-                    userSessions.delete(jid);
-                    // Permite que o código continue e processe a nova mensagem normalmente no fluxo normal
-                } else {
-                    console.log(`[State Machine] Usuário ${headers} respondeu à Triagem. Acionando Handoff Real...`);
-                    userSessions.delete(jid); // Reseta o estado
-
-                    await sock.sendPresenceUpdate('composing', jid);
-                    await new Promise(resolve => setTimeout(resolve, 800));
-
-                    const confirmMsg = "Certo, já anotei aqui! Vou repassar para um atendente continuar o atendimento com esses detalhes, só um segundo.";
-                    await sock.sendMessage(jid, { text: confirmMsg });
-
-                    await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'user', content: textContent } });
-                    await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: confirmMsg } });
-
-                    userPausedStates.set(jid, Date.now());
-                    metricsService.incrementHandoff();
-                    return; // 🛑 ABORTA a fila. O handoff foi consumado.
-                }
-            }
-        } // <--- FECHA O BLOCO DO AWAITING_TRIAGE_ANSWER AQUI
+        // O bloco manual de "State Machine: AWAITING_TRIAGE_ANSWER" foi completamente apagado em favor do Controle Delegado ao LLM.
 
         console.log(`Recebido de ${pushname} (${headers}): ${textContent} (Aguardando debounce...)`);
         metricsService.incrementMessages();
