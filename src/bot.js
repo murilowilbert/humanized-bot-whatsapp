@@ -545,12 +545,17 @@ async function setupEvents() {
                     // Remove \n de todos os itens do array
                     cleanSearchTermsArray = cleanSearchTermsArray.map(t => t.replace(/\n/g, ' ').trim());
 
-                    console.log(`[Unified Search] Pesquisando simultaneamente em AMBOS caches para: [${cleanSearchTermsArray.join(', ')}]`);
+                    console.log(`[Unified Search] Avaliando Triagem Prioritária para: [${cleanSearchTermsArray.join(', ')}]`);
 
-                    const [principalMatches, geralMatches] = await Promise.all([
-                        stockService.searchProduct(cleanSearchTermsArray),
-                        stockService.searchCategory(cleanSearchTermsArray)
-                    ]);
+                    const geralMatches = await stockService.searchCategory(cleanSearchTermsArray);
+                    let principalMatches = [];
+
+                    // Curto-Circuito na Triagem (Hard Stop)
+                    if (geralMatches && geralMatches.length > 0) {
+                        console.log(`[Curto-Circuito] Match de Categoria detectado! Abortando busca no BD Principal para focar na triagem.`);
+                    } else {
+                        principalMatches = await stockService.searchProduct(cleanSearchTermsArray);
+                    }
 
                     let combinedContext = [];
                     if (principalMatches && principalMatches.length > 0) combinedContext.push(...principalMatches);
