@@ -545,38 +545,10 @@ async function setupEvents() {
                     // Remove \n de todos os itens do array
                     cleanSearchTermsArray = cleanSearchTermsArray.map(t => t.replace(/\n/g, ' ').trim());
 
-                    console.log(`[Unified Search] Avaliando Triagem Prioritária para: [${cleanSearchTermsArray.join(', ')}]`);
-
-                    const sessionData = userSessions.get(jid) || { state: 'DEFAULT' };
-                    const isAnsweringTriage = sessionData.state === 'AWAITING_TRIAGE_ANSWER';
-
-                    if (isAnsweringTriage) {
-                        console.log(`[State Machine] Bypass de Curto-Circuito: Usuário respondendo à triagem anterior. Estado resetado para fluxo de vendas normal.`);
-                        userSessions.set(jid, { ...sessionData, state: 'DEFAULT' });
-                        
-                        // Garante a concatenação mecânica do assunto original com a resposta (ex: vaso + quadrado)
-                        const lastUserMsg = [...recentHistory].reverse().find(h => h.role === 'user');
-                        if (lastUserMsg && lastUserMsg.content) {
-                            const forcedConcat = `${lastUserMsg.content} ${searchKeywords}`.trim();
-                            cleanSearchTermsArray.unshift(forcedConcat);
-                            console.log(`[Bypass Triagem] Concatenação Forçada Injetada: "${forcedConcat}"`);
-                        }
-                    }
+                    console.log(`[Unified Search] Avaliando Busca Simultânea para: [${cleanSearchTermsArray.join(', ')}]`);
 
                     let principalMatches = await stockService.searchProduct(cleanSearchTermsArray);
                     let geralMatches = await stockService.searchCategory(cleanSearchTermsArray);
-
-                    // Prioridade do Roteador: Ignorando o Zero-Context Handoff para Triagem
-                    if (!isAnsweringTriage && principalMatches && principalMatches.length === 0 && geralMatches && geralMatches.length > 0) {
-                        console.log(`[Roteador] 0 Itens no Principal, mas Categoria bateu. Ignorando Handoff imediato para forçar Triagem Genérica.`);
-                    } else if (!isAnsweringTriage && geralMatches && geralMatches.length > 0) {
-                        console.log(`[Curto-Circuito] Match de Categoria detectado! Abortando busca no BD Principal para focar na triagem.`);
-                        principalMatches = []; // Esvazia o array principal para forçar a triagem
-                    }
-                    
-                    if (isAnsweringTriage) {
-                         geralMatches = []; // Previne bypass absoluto do Passo B na rodada de exibição de resultados
-                    }
 
                     let combinedContext = [];
                     if (principalMatches && principalMatches.length > 0) combinedContext.push(...principalMatches);
@@ -597,8 +569,6 @@ async function setupEvents() {
 
                     stockContext = stockContext.slice(0, 15);
                     console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
-
-                    categoryMatch = geralMatches && geralMatches.length > 0 ? geralMatches[0] : null; // Prioridade Absoluta restaurada para o DB de Categorias
 
                 }
 
@@ -707,70 +677,10 @@ async function setupEvents() {
                     console.log(`[Intent Router] Intenção de 'FAQ' detectada. Ignorando consulta de db/estoque.`);
                 }
 
-                // O Fluxo Definitivo de Triagem e Handoff (Hardcoded / 3 Passos)
-
-                // Passo B (Fallback): Triage Bypass (Verificação de Categoria Geral na falta de produtos)
-                if (intent === 'SEARCH' && categoryMatch) {
-                    const catName = categoryMatch['categoria_geral'];
-                    // Blindagem Rígida Pós-Cache: Proteção redundante contra valores bizarros de DB
-                    if (!catName || catName.trim() === '' || catName.toLowerCase() === 'undefined') {
-                        console.log(`[Triagem Abortada] Categoria inválida/Nula detectada no objeto injetado. Ignorando.`);
-                    } else {
-                        const perguntas = categoryMatch['perguntas_recomendadas'] || categoryMatch['perguntas recomendadas'] || categoryMatch.perguntas;
-                        if (perguntas) {
-                            console.log(`[Triagem Ativada] Categoria '${catName}' detectada de Imediato. Assumindo controle bypass + AI Naturalization...`);
-
-                            // 1. Naturaliza a pergunta engessada com o LLM (Rodada 1 da Máquina de Estados)
-                            const fallbackFullText = await aiService.naturalizeTriageQuestion(catName, perguntas);
-
-                            // O prompt da IA instrui a dividir com |||
-                            let questionPart = fallbackFullText;
-                            let tipPart = "";
-
-                            if (fallbackFullText.includes("|||")) {
-                                const splitParts = fallbackFullText.split('|||');
-                                questionPart = splitParts[0].trim();
-                                tipPart = splitParts[1] ? splitParts[1].trim() : "";
-                            }
-
-                            // Anexa a saudação inicial do bot à pergunta principal (Seguro contra o erro do "opções de undefined")
-                            const firstBubble = `Temos opções de ${catName} sim! ${questionPart}`;
-
-                            // 2. Salva a mensagem original do usuário
-                            await prisma.chatHistory.create({
-                                data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
-                            });
-
-                            // 3. Aciona o estado de "digitando" rápido e manda a primeira bolha
-                            await sock.sendPresenceUpdate('composing', jid);
-                            await new Promise(resolve => setTimeout(resolve, 1500));
-                            await sock.sendMessage(jid, { text: firstBubble });
-
-                            // 4. Se tiver a segunda parte (dica), aguarda e manda também
-                            if (tipPart) {
-                                await sock.sendPresenceUpdate('composing', jid);
-                                await new Promise(resolve => setTimeout(resolve, 1500));
-                                await sock.sendMessage(jid, { text: tipPart });
-                            }
-
-                            // 5. Salva a resposta completa do Bot no histórico (para contexto futuro)
-                            await prisma.chatHistory.create({
-                                data: { phoneNumber: headers, role: 'model', content: fallbackFullText.replace('|||', '\n') }
-                            });
-
-                            // 6. Seta o Estado para aguardar a resposta do cliente ANTES de dar Handoff (Rodada 2)
-                            userSessions.set(jid, { state: 'AWAITING_TRIAGE_ANSWER', stateTimestamp: Date.now() });
-
-                            return; // 🛑 ABORTA AQUI! Não busca os itens e nem gera tela cheia de respostas com a Tabela Principal.
-                        }
-                    }
-                }
-
-                // Passo C anterior (Handoff Real 0 Resultados) foi removido.
-                // Agora o Fallback Inteligente permite que o array vazio seja passado
-                // para o LLM Final lidar com a falta de produtos de forma autônoma.
-
-                // Passo A: IA Conversacional Normal (Há resultados no Estoque)
+                // O Fluxo Definitivo de Triagem e Handoff (Delegação para o LLM)
+                // O Passo B hardcoded (State Machine) foi removido em favor da inteligência de contexto livre do LLM.
+                
+                // Passo A: IA Conversacional Normal (Há resultados no Estoque ou Categorias)
                 // Se chegou até aqui, stockContext tem > 0 itens OU é intent FAQ. A IA Final entra em cena.
 
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
