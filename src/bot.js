@@ -975,7 +975,7 @@ async function initialize() {
             version,
             auth: state,
             printQRInTerminal: false,
-            logger: pino({ level: 'silent' }), // Suppress detailed terminal logs from baileys
+            logger: pino({ level: 'error' }), // Filtra a poluição do Signal Protocol, mantendo apenas crashes críticos
             browser: Browsers.baileys('Desktop'),
             syncFullHistory: false,
             generateHighQualityLinkPreview: true
