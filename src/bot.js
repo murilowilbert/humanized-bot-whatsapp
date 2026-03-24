@@ -547,14 +547,15 @@ async function setupEvents() {
 
                     console.log(`[Unified Search] Avaliando Triagem Prioritária para: [${cleanSearchTermsArray.join(', ')}]`);
 
+                    let principalMatches = await stockService.searchProduct(cleanSearchTermsArray);
                     const geralMatches = await stockService.searchCategory(cleanSearchTermsArray);
-                    let principalMatches = [];
 
-                    // Curto-Circuito na Triagem (Hard Stop)
-                    if (geralMatches && geralMatches.length > 0) {
+                    // Prioridade do Roteador: Ignorando o Zero-Context Handoff para Triagem
+                    if (principalMatches && principalMatches.length === 0 && geralMatches && geralMatches.length > 0) {
+                        console.log(`[Roteador] 0 Itens no Principal, mas Categoria bateu. Ignorando Handoff imediato para forçar Triagem Genérica.`);
+                    } else if (geralMatches && geralMatches.length > 0) {
                         console.log(`[Curto-Circuito] Match de Categoria detectado! Abortando busca no BD Principal para focar na triagem.`);
-                    } else {
-                        principalMatches = await stockService.searchProduct(cleanSearchTermsArray);
+                        principalMatches = []; // Esvazia o array principal para forçar a triagem
                     }
 
                     let combinedContext = [];
