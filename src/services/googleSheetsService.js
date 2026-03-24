@@ -158,6 +158,10 @@ async function searchProductInSheet(keywordsArray) {
             { name: 'categoria', weight: 1.5 },
             { name: 'atributos físicos', weight: 0.3 },
             { name: 'características principais', weight: 0.3 },
+            { name: 'marca', weight: 1.5 },
+            { name: 'preço (r$)', weight: 0.5 },
+            { name: 'potência/voltagem', weight: 1.0 },
+            { name: 'potencia/voltagem', weight: 1.0 },
             { name: 'código', weight: 2.0 },
             { name: 'codigo', weight: 2.0 },
             { name: 'ean', weight: 2.0 }
