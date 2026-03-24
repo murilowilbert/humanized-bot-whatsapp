@@ -357,64 +357,6 @@ Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
     }
 }
 
-/**
- * Classifica a intenção primária do usuário para evitar buscas desnecessárias na planilha
- */
-async function classifyIntent(userMessage) {
-    if (!userMessage || userMessage.trim() === '') return 'FAQ';
-
-    try {
-        const prompt = `Classifique a seguinte mensagem do cliente em uma das três categorias:
-1. "STORE_FAQ": Perguntas gerais da loja (horário de funcionamento, endereço, localização física, se tem tele-entrega, formas de pagamento) ou saudações muito básicas desvinculadas de produtos ("bom dia", "olá", "tudo bem").
-2. "PRODUCT_SEARCH": Qualquer tentativa de encontrar, perguntar o preço ou saber informações sobre produtos mecânicos, elétricos, hidráulicos, tintas ou consertos ("tem chuveiro?", "qual o preço?", "cimento", "cano pvc").
-3. "ORDER_RESERVE": Se o usuário indicar que tomou a decisão de compra, pediu para separar o produto, ou finalizou a escolha (ex: "vou querer", "separa essa", "pode embalar", "separa pra mim"). Retorne ESTRITAMENTE ORDER_RESERVE nesses casos transacionais.
-
-SE o usuário enviar apenas um nome solto, marca ou modelo (ex: optima, parafuso), a intenção DEVE ser PRODUCT_SEARCH. Use STORE_FAQ APENAS para dúvidas administrativas.
-
-Mensagem: "${userMessage}"
-
-Retorne APENAS a string "STORE_FAQ", "PRODUCT_SEARCH" ou "ORDER_RESERVE".`;
-
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            systemInstruction: { parts: [{ text: "Classificador de intenções estrito. Responda apenas com a tag solicitada." }] }
-        });
-
-        const rawResponse = result.response.text();
-
-        // 1. Higienização Prévia
-        const cleanRes = rawResponse.trim().replace(/```json|```/gi, '');
-
-        // 2. Fallback de String Crua (Bypass de Parse)
-        // O bot.js internamente escuta os retornos 'FAQ' e 'SEARCH'. Mapeamos a string da IA direto para eles.
-        if (cleanRes.includes('ORDER_RESERVE')) {
-            console.log(`[AI Classification Scanner] Intenção Bypassed (Raw String): ORDER_RESERVE`);
-            return 'ORDER_RESERVE';
-        }
-        if (cleanRes.includes('STORE_FAQ') || cleanRes === 'FAQ') {
-            console.log(`[AI Classification Scanner] Intenção Bypassed (Raw String): FAQ`);
-            return 'FAQ';
-        }
-        if (cleanRes.includes('PRODUCT_SEARCH') || cleanRes === 'SEARCH') {
-            console.log(`[AI Classification Scanner] Intenção Bypassed (Raw String): SEARCH`);
-            return 'SEARCH';
-        }
-
-        // Tenta fazer o parse caso o modelo devolva o formato antigo
-        const answer = JSON.parse(cleanRes);
-        console.log(`[AI Classification Scanner] Intenção Detectada via JSON: ${answer.intent} | Racional: "${answer.explanation || 'N/A'}"`);
-
-        if (answer.intent === 'ORDER_RESERVE') return 'ORDER_RESERVE';
-        if (answer.intent === 'STORE_FAQ' || answer.intent === 'FAQ') return 'FAQ';
-        return 'SEARCH';
-
-    } catch (e) {
-        // 3. Try/Catch Seguro com Default
-        console.error("❌ [Erro Crítico Pós-Debounce] Falha na Classificação de Intenções JSON:", e);
-        // Retorna a intenção primária como default para manter o robô rodando no fluxo de estoque
-        return "SEARCH";
-    }
-}
 
 /**
  * Cruza a descrição visual com os resultados brutos do Fuse.js e extrai os 5 mais prováveis
@@ -539,7 +481,6 @@ module.exports = {
     extractImageKeywords,
     verifyProductImageWithCatalog,
     expandSearchQuery,
-    classifyIntent,
     semanticPreRanking,
     naturalizeTriageQuestion
 };
