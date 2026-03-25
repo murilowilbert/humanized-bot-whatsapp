@@ -88,31 +88,24 @@ function isOpen() {
 async function sendHumanLikeResponse(jid, text) {
     if (!text) return;
 
-    // 1. Extrai TODOS os códigos da resposta inteira para checar se é "Vitrine Rica" (Múltiplos Itens)
-    const regexCodGlobalTotal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
-    const allCodMatches = Array.from(text.matchAll(regexCodGlobalTotal));
-    const allExtractedCodes = allCodMatches.map(m => m[1]);
-    
-    // Flag de Segurança: Só anexa imagem se for estritamente 1 produto na resposta inteira (Evita Baileys Crash)
-    const shouldAttachMedia = allExtractedCodes.length === 1;
-
-    // Resolve as partes por parágrafo
+    // Resolve as partes por parágrafo (cada bullet ou item da vitrine rica será um chunk)
     const parts = text.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
 
     for (let i = 0; i < parts.length; i++) {
         let part = parts[i].trim();
         if (!part) continue;
 
-        const regexCodGlobal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
+        // O Regex agora captura tanto [FOTO:xxx] quanto o legado {{COD:xxx}} ou [COD:xxx]
+        const regexCodGlobal = /(?:\[|\{\{)\s*(?:FOTO|COD):\s*([\w-]+)\s*(?:\]|\}\})/gi;
         const codMatches = Array.from(part.matchAll(regexCodGlobal));
         const extractedCodes = codMatches.map(m => m[1]);
 
         // Remove a tag do texto incondicionalmente para manter UI limpa
         part = part.replace(regexCodGlobal, '').trim();
 
-        // Encontra o buffer da imagem apenas se for seguro (ShouldAttachMedia)
+        // Encontra o buffer da imagem (apenas 1 por chunk)
         let fileToSend = null;
-        if (shouldAttachMedia && extractedCodes.length > 0) {
+        if (extractedCodes.length > 0) {
             const cod = extractedCodes[0];
             const pathsToCheck = [
                 path.join(__dirname, `../data/fotos/${cod}.jpg`),
@@ -127,22 +120,22 @@ async function sendHumanLikeResponse(jid, text) {
 
         try {
             if (fileToSend) {
-                // Envia a Imagem e bota o texto como Legenda (Caption)
+                // Envia a Imagem e bota todo o texto contíguo como Legenda (Caption)
                 await sock.sendMessage(jid, {
                     image: { url: fileToSend },
                     caption: part.length > 0 ? part : undefined
                 });
             } else {
-                // Graceful Degradation: Vitrine Rica (>1) ou Arquivo Inexistente -> Envia Apenas Texto
+                // Chunk Padrão ou Imagem Não Encontrada -> Envia Apenas Texto Gracefully
                 if (part.length > 0) {
                     await sock.sendMessage(jid, { text: part });
                 }
             }
 
-            // Pausa sutil entre envio dos parágrafos
+            // Delay estratégico (500 a 1000ms) para evitar inversão na UI do cliente
             await new Promise(resolve => setTimeout(resolve, 800));
         } catch (error) {
-            console.error(`Erro ao enviar bolha/imagem (Index ${i}):`, error);
+            console.error(`Erro ao enviar bolha/imagem do Dispatcher (Index ${i}):`, error);
         }
     }
 }
