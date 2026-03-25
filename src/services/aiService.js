@@ -309,8 +309,7 @@ async function expandSearchQuery(userMessage, recentHistory = []) {
 
 Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para gerar ESTRITAMENTE um array JSON com palavras-chave curtas focadas em busca textual.
 
-### REGRAS CRÍTICAS DE CONTEXTO E FUNIL:
-1. CONTEXTO ACUMULATIVO (O FUNIL): A busca não se baseia apenas na última frase. Se o cliente falou de "torneira" antes, e agora disse "parede" ou "elétrica", VOCÊ DEVE manter a palavra primária ("torneira") junto com a novidade ("torneira parede elétrica"). Analise o histórico recente. Se o usuário usar pronomes como "esse", "aquilo", ou "pra isso", identifique o produto anterior (ex: fio 6mm) e gere a array de busca baseada no item completo (ex: ["conector 6mm", "conector porcelana"]).
+1. MEMÓRIA DE CONTEXTO (CONTEXTUAL QUERY REFORMULATION): Se a resposta do usuário for uma continuação, especificação, ou resposta a uma pergunta de triagem (ex: "pro chuveiro", "branco", "o mais barato", "220v"), você É OBRIGADO a olhar o turno anterior. Pegue o PRODUTO PRINCIPAL que estava sendo discutido (ex: "fio") e CONCATENE com a resposta atual. O array de busca final deve ser a junção dos dois (ex: ["fio para chuveiro", "fio chuveiro"]). Nunca busque apenas pelo adjetivo ou complemento.
 2. ATENÇÃO AO NOVO ASSUNTO: Se a última mensagem do usuário mudar drasticamente de categoria (ex: estava falando de torneiras e agora pediu tintas), EXTRAIA APENAS OS TERMOS DA NOVA MENSAGEM. Ignore completamente os produtos antigos para não sujar a busca.
 3. PALAVRAS-CHAVE CURTAS: Não transforme perguntas em buscas longas. Extraia a essência. Invés de "quero uma torneira zagonel de pia", retorne ["torneira zagonel pia", "torneira de pia"].
 4. Variações de Cauda Longa: GERE MÚLTIPLAS VARIAÇÕES da frase completa do usuário. Inclua a versão exata que ele digitou e variações com preposições alternativas (ex: se pedir "fio pra chuveiro", retorne ["fio para chuveiro", "fio de chuveiro", "cabo para chuveiro", "fio chuveiro"]).
@@ -322,6 +321,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 10. PROIBIÇÃO DE FRAGMENTAÇÃO: Você é ESTRITAMENTE PROIBIDO de quebrar termos compostos em palavras soltas genéricas. Se o usuário busca "fechadura para porta de madeira", NÃO retorne "madeira" ou "porta" como palavras isoladas na array, pois isso poluíra o banco de dados. Retorne apenas o termo composto e específico: ["fechadura porta de madeira"].
 11. MENSAGENS VAZIAS/CURTAS: Se a mensagem do usuário não contiver NENHUMA intenção de busca por produto ou característica (ex: "ok", "obrigado", "tem?", "olá"), você DEVE retornar ESTRITAMENTE um array JSON vazio: []. Não adicione nenhuma explicação de texto.
 12. TERMOS RELATIVOS: Se o usuário pedir variações como "outros", "mais opções", "tem outra", "alternativas", você DEVE olhar o histórico, identificar a categoria principal (ex: "chuveiro") e DESCARTAR o filtro restritivo anterior (ex: a marca específica). Crie um array de busca amplo pela categoria geral (ex: ["chuveiro", "ducha"]) para garantir que o contexto traga marcas concorrentes.
+13. MENSAGENS CITADAS: Se o usuário responder com confirmações (ex: "preciso de uma", "quero esse") a uma mensagem que contenha a tag [Respondendo a: {Produto}], extraia estritamente o Nome do Produto de dentro da tag e use-o como termo de busca principal.
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"
