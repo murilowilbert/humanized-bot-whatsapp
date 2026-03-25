@@ -88,6 +88,14 @@ function isOpen() {
 async function sendHumanLikeResponse(jid, text) {
     if (!text) return;
 
+    // 1. Extrai TODOS os códigos da resposta inteira para checar se é "Vitrine Rica" (Múltiplos Itens)
+    const regexCodGlobalTotal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
+    const allCodMatches = Array.from(text.matchAll(regexCodGlobalTotal));
+    const allExtractedCodes = allCodMatches.map(m => m[1]);
+    
+    // Flag de Segurança: Só anexa imagem se for estritamente 1 produto na resposta inteira (Evita Baileys Crash)
+    const shouldAttachMedia = allExtractedCodes.length === 1;
+
     // Resolve as partes por parágrafo
     const parts = text.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
 
@@ -95,17 +103,17 @@ async function sendHumanLikeResponse(jid, text) {
         let part = parts[i].trim();
         if (!part) continue;
 
-        // Tenta achar todos os CODs na parte para carregar as fotos
         const regexCodGlobal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
         const codMatches = Array.from(part.matchAll(regexCodGlobal));
         const extractedCodes = codMatches.map(m => m[1]);
 
-        // Remove a tag do texto incondicionalmente
+        // Remove a tag do texto incondicionalmente para manter UI limpa
         part = part.replace(regexCodGlobal, '').trim();
 
-        // Encontra os buffers das imagens
-        const filesToSend = [];
-        for (const cod of extractedCodes) {
+        // Encontra o buffer da imagem apenas se for seguro (ShouldAttachMedia)
+        let fileToSend = null;
+        if (shouldAttachMedia && extractedCodes.length > 0) {
+            const cod = extractedCodes[0];
             const pathsToCheck = [
                 path.join(__dirname, `../data/fotos/${cod}.jpg`),
                 path.join(__dirname, `../data/fotos/${cod}.png`),
@@ -114,25 +122,18 @@ async function sendHumanLikeResponse(jid, text) {
                 path.join(__dirname, `../assets/imagens_produtos/${cod}.jpg`),
                 path.join(__dirname, `../assets/imagens_produtos/${cod}.png`)
             ];
-            const file = pathsToCheck.find(p => fs.existsSync(p));
-            if (file) filesToSend.push(file);
+            fileToSend = pathsToCheck.find(p => fs.existsSync(p));
         }
 
         try {
-            if (filesToSend.length > 0) {
-                // A primeira imagem recebe o texto como legenda (caption)
+            if (fileToSend) {
+                // Envia a Imagem e bota o texto como Legenda (Caption)
                 await sock.sendMessage(jid, {
-                    image: { url: filesToSend[0] },
+                    image: { url: fileToSend },
                     caption: part.length > 0 ? part : undefined
                 });
-
-                // As outras imagens (se houver mais de uma na mesma linha) vão sem legenda
-                for (let j = 1; j < filesToSend.length; j++) {
-                    await new Promise(resolve => setTimeout(resolve, 800));
-                    await sock.sendMessage(jid, { image: { url: filesToSend[j] } });
-                }
             } else {
-                // Nenhuma imagem, manda só o texto normal
+                // Graceful Degradation: Vitrine Rica (>1) ou Arquivo Inexistente -> Envia Apenas Texto
                 if (part.length > 0) {
                     await sock.sendMessage(jid, { text: part });
                 }
