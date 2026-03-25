@@ -432,6 +432,14 @@ async function setupEvents() {
             console.log(`[Debounce Acionado] Iniciando roteamento para o JID: ${jid}`);
             userProcessingTimers.delete(jid);
 
+            // Early Return de Fila (Economia de Recursos API)
+            // Impede consultas ao DB e chamadas ao LLM se o humano assumiu e havia mensagens remanescentes na fila de debounce.
+            if (userPausedStates.has(jid)) {
+                console.log(`[Muted] Chat em intervenção humana. Ignorando mensagem na fila.`);
+                userMessageQueues.delete(jid);
+                return;
+            }
+
             // Se já estivermos processando algo proscrito pela fila anterior (AI demorando)
             // mantemos as mensagens na fila para o próximo ciclo
             if (userIsProcessing.get(jid)) {

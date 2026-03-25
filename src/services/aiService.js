@@ -320,6 +320,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 8. LIMPEZA DE TERMOS: É ESTRITAMENTE PROIBIDO incluir adjetivos de valor, preço, tamanho ou qualidade (ex: "barato", "caro", "econômico", "pequeno") na array de busca. Retorne APENAS substantivos e especificações técnicas diretas. Exemplo: se o cliente pedir "chuveiro barato", a sua array deve conter apenas ["chuveiro"]. A análise de preço será feita posteriormente pela IA principal.
 9. QUEBRA DE TOKENS: Quando o usuário pedir um produto com um atributo específico (ex: "chuveiro com pressurizador", "torneira de metal"), ALÉM de gerar a combinação, você DEVE OBRIGATORIAMENTE incluir na array os atributos chave de forma isolada e seus sinônimos. Exemplo: ["chuveiro pressurizador", "pressurizador", "pressurizada", "turbo"]. Isso garantirá que o motor de busca encontre o atributo mesmo se o nome principal estiver escrito diferente na planilha.
 10. PROIBIÇÃO DE FRAGMENTAÇÃO: Você é ESTRITAMENTE PROIBIDO de quebrar termos compostos em palavras soltas genéricas. Se o usuário busca "fechadura para porta de madeira", NÃO retorne "madeira" ou "porta" como palavras isoladas na array, pois isso poluíra o banco de dados. Retorne apenas o termo composto e específico: ["fechadura porta de madeira"].
+11. MENSAGENS VAZIAS/CURTAS: Se a mensagem do usuário não contiver NENHUMA intenção de busca por produto ou característica (ex: "ok", "obrigado", "tem?", "olá"), você DEVE retornar ESTRITAMENTE um array JSON vazio: []. Não adicione nenhuma explicação de texto.
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"
@@ -340,7 +341,14 @@ Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
             cleanJson = arrayMatch[0];
         }
         cleanJson = cleanJson.replace(/[\r\n\t]/g, ''); // Sanitização agressiva para manter formato válido
-        const keywordsArray = JSON.parse(cleanJson);
+        // Try-Catch Silencioso para Proteção do Motor (Anti-Array corrompido)
+        let keywordsArray = [];
+        try {
+            keywordsArray = JSON.parse(cleanJson);
+        } catch (parseError) {
+            console.log(`[AI Keyword] JSON parse falhou silenciosamente para a string: "${rawResponse}". Assumindo busca limpa [].`);
+            keywordsArray = []; // Fallback silencioso sem travar o cano principal
+        }
 
         const lowerMsg = sanitizedMessage.toLowerCase();
         if (lowerMsg.includes('água de poço') || lowerMsg.includes('agua de poco') || lowerMsg.includes('caixa d\'água baixa') || lowerMsg.includes('pouca pressão') || lowerMsg.includes('pouca pressao') || lowerMsg.includes('agua de poço') || lowerMsg.includes('pressão da água')) {
