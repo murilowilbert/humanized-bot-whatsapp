@@ -88,24 +88,31 @@ function isOpen() {
 async function sendHumanLikeResponse(jid, text) {
     if (!text) return;
 
-    // Resolve as partes por parágrafo (cada bullet ou item da vitrine rica será um chunk)
+    // 1. Extrai TODOS os códigos da resposta inteira para checar se é "Vitrine Rica" (Múltiplos Itens)
+    const regexCodGlobalTotal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
+    const allCodMatches = Array.from(text.matchAll(regexCodGlobalTotal));
+    const allExtractedCodes = allCodMatches.map(m => m[1]);
+    
+    // Flag de Segurança: Só anexa imagem se for estritamente 1 produto na resposta inteira (Evita Baileys Crash)
+    const shouldAttachMedia = allExtractedCodes.length === 1;
+
+    // Resolve as partes por parágrafo
     const parts = text.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
 
     for (let i = 0; i < parts.length; i++) {
         let part = parts[i].trim();
         if (!part) continue;
 
-        // O Regex agora captura tanto [FOTO:xxx] quanto o legado {{COD:xxx}} ou [COD:xxx]
-        const regexCodGlobal = /(?:\[|\{\{)\s*(?:FOTO|COD):\s*([\w-]+)\s*(?:\]|\}\})/gi;
+        const regexCodGlobal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
         const codMatches = Array.from(part.matchAll(regexCodGlobal));
         const extractedCodes = codMatches.map(m => m[1]);
 
         // Remove a tag do texto incondicionalmente para manter UI limpa
         part = part.replace(regexCodGlobal, '').trim();
 
-        // Encontra o buffer da imagem (apenas 1 por chunk)
+        // Encontra o buffer da imagem apenas se for seguro (ShouldAttachMedia)
         let fileToSend = null;
-        if (extractedCodes.length > 0) {
+        if (shouldAttachMedia && extractedCodes.length > 0) {
             const cod = extractedCodes[0];
             const pathsToCheck = [
                 path.join(__dirname, `../data/fotos/${cod}.jpg`),
@@ -120,22 +127,22 @@ async function sendHumanLikeResponse(jid, text) {
 
         try {
             if (fileToSend) {
-                // Envia a Imagem e bota todo o texto contíguo como Legenda (Caption)
+                // Envia a Imagem e bota o texto como Legenda (Caption)
                 await sock.sendMessage(jid, {
                     image: { url: fileToSend },
                     caption: part.length > 0 ? part : undefined
                 });
             } else {
-                // Chunk Padrão ou Imagem Não Encontrada -> Envia Apenas Texto Gracefully
+                // Graceful Degradation: Vitrine Rica (>1) ou Arquivo Inexistente -> Envia Apenas Texto
                 if (part.length > 0) {
                     await sock.sendMessage(jid, { text: part });
                 }
             }
 
-            // Delay estratégico (500 a 1000ms) para evitar inversão na UI do cliente
+            // Pausa sutil entre envio dos parágrafos
             await new Promise(resolve => setTimeout(resolve, 800));
         } catch (error) {
-            console.error(`Erro ao enviar bolha/imagem do Dispatcher (Index ${i}):`, error);
+            console.error(`Erro ao enviar bolha/imagem (Index ${i}):`, error);
         }
     }
 }
@@ -181,6 +188,11 @@ async function setupEvents() {
         // 0. Trava de descarte imediato (Ignorar Broadcast/Status)
         if (msg.key?.remoteJid === 'status@broadcast') return;
 
+        // --- GLOBAL DASHBOARD STATE CONTROLS ---
+        if (!server.isBotEnabled()) {
+            return; // Bot completamente desligado (Early Return Global)
+        }
+
         // Ensure text extraction from Baileys structure
         let textContent = msg.message?.conversation ||
             msg.message?.extendedTextMessage?.text ||
@@ -219,8 +231,7 @@ async function setupEvents() {
 
         if (server.isTestMode()) {
             if (!isAdmin) {
-                // 4. Descarte com Log
-                console.log(`Ignorando ${cleanId} (Modo Teste Ativo)`);
+                // 4. Descarte Silencioso (Admin Only Mode Ativo)
                 return;
             }
         }
@@ -785,16 +796,9 @@ async function setupEvents() {
                 // B) Human Handoff (Bloqueia repasse imediato se foi detectada a Triagem de Categorias Gerais)
                 let isTriageActive = false; // Add variable definition here to prevent scope issues
                 if (response.needsHandoff && !isTriageActive) {
-                    if (isOpen()) {
-                        await sock.sendMessage(jid, { text: "Vou repassar para um atendente responder certinho para você, só um segundo." });
-                    } else {
-                        const todayDay = getBrazilTime().getDay();
-                        const nextBusinessDayText = (todayDay === 6 || todayDay === 0) ? "na segunda-feira" : "amanhã";
-                        await sock.sendMessage(jid, { text: `Deixei sua dúvida anotada! Como nossa loja já fechou hoje, um atendente humano vai te responder assim que abrirmos ${nextBusinessDayText} às 08h.` });
-                    }
                     userPausedStates.set(jid, getBrazilDateString());
                     metricsService.incrementHandoff();
-                    return; // Encerra o fluxo aqui para não pedir avaliação nem iniciar timer de inatividade
+                    return; // Encerra o fluxo aqui para não iniciar timer de inatividade
                 }
 
                 // E) Set Inactivity Follow-up
@@ -866,7 +870,7 @@ async function initialize() {
             version,
             auth: state,
             printQRInTerminal: false,
-            logger: pino({ level: 'error' }), // Filtra a poluição do Signal Protocol, mantendo apenas crashes críticos
+            logger: pino({ level: 'silent' }), // Silencia completamente a poluição do Baileys
             browser: Browsers.baileys('Desktop'),
             syncFullHistory: false,
             generateHighQualityLinkPreview: true
