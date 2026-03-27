@@ -221,17 +221,16 @@ async function extractImageKeywords(mediaData, textContent) {
                 {
                     role: 'user',
                     parts: [
-                        { text: `O cliente enviou a seguinte foto no WhatsApp, com a legenda: "${textContent || 'Nenhuma legenda'}". Aja como um assistente de ferragem. Sua tarefa nesta etapa (Pre-Flight) é gerar UMA DESCRIÇÃO NEUTRA E GENÉRICA DAS CARACTERÍSTICAS FÍSICAS do produto na foto (ex: 'chuveiro eletrico branco quadrado de parede', 'torneira de metal cano longo'). \n\nREGRA ABSOLUTA: VOCÊ ESTÁ ESTRITAMENTE PROIBIDO DE TENTAR ADIVINHAR OU INVENTAR MARCAS OU LINHAS COMERCIAIS (ex: NUNCA diga 'Lorenzetti', 'Acqua Storm', 'Tigre' a menos que o texto da marca esteja NITIDAMENTE legível na foto). Se for um pedido de conserto, descreva a peça genérica que falta (ex: 'resistencia chuveiro generica', 'reparo registro de parede'). Retorne apenas os termos de busca separados por espaço (sem explicações).` },
+                        { text: `Aja como um assistente de ferragem. O cliente mandou a seguinte foto no WhatsApp com a legenda/mensagem: "${textContent || 'Nenhuma legenda'}". \n\nTAREFA 1: Extraia UMA DESCRIÇÃO NEUTRA das características físicas primárias do que está na imagem (ex: 'chuveiro eletrico branco', 'cano de pvc').\n\nTAREFA 2: Analise a legenda. Se a legenda for genérica (ex: 'tem esse?', 'quanto custa', 'olha isso', 'esse aqui'), IGNORE o texto do usuário e retorne APENAS a descrição física gerada na Tarefa 1. Se a legenda for ESPECÍFICA contendo metragens, tamanhos ou detalhes complementares (ex: 'tem desse de 150mm?', 'cabo igual esse de 5mm'), CONCATENE a descrição física com a informação útil (ex: 'cabo de cobre 5mm', 'tubo pvc 150mm').\n\nREGRA RESTRITA: Retorne APENAS O TEXTO FINAL de busca, sem explicações, sem aspas, numa única linha. PROIBIDO CHUTAR MARCAS OU LINHAS COMERCIAIS se o texto da marca não estiver 100% legível na embalagem do produto.` },
                         { inlineData: { mimeType: mediaData.mimeType, data: mediaData.data } }
                     ]
                 }
             ],
-            systemInstruction: { parts: [{ text: "Você é um extrator de características físicas NEUTRAS de materiais de construção. Foque em forma, cor, tipo e uso genérico. PROIBIDO CHUTAR MARCAS OU MODELOS COMERCIAIS." }] }
+            systemInstruction: { parts: [{ text: "Você é um extrator semântico cirúrgico. Você junta imagens com intenções textuais criando queries de banco de dados extremamente curtas." }] }
         });
-        const tags = result.response.text().trim();
-        console.log(`[AI Vision Pre-Flight] Extraído da imagem: ${tags}`);
-        // Junta o texto do user original com os termos da imagem para garantir que o contexto não se perca
-        return `${textContent} ${tags}`;
+        const unificado = result.response.text().trim();
+        console.log(`[AI Vision Inteligente] Resultado da fusão Imagem + Texto: "${unificado}"`);
+        return unificado; // Retorna a string pronta e tratada para ser enviada ao Unified Search
     } catch (e) {
         console.error("Erro no vision pre-flight:", e);
         return textContent; // Fallback

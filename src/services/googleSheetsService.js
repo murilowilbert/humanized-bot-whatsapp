@@ -268,16 +268,21 @@ async function searchCategoryInSheet(keywordsArray) {
             const catName = (c['categoria_geral'] || '').toLowerCase();
             const tagsStr = (c['tags para busca (sinônimos)'] || c['sinonimos'] || c['tags'] || '').toLowerCase();
 
-            // Match direto no nome ou vice-versa
-            if (catName.includes(lowerTerm) || lowerTerm.includes(catName)) return true;
+            // Match exigente (boundary) para evitar falsos positivos ridículos (ex: 'cano' ativando 'ar condicionado')
+            const catTokens = catName.split(/\s+/);
+            const termTokens = lowerTerm.split(/\s+/);
+            
+            // Checa interseção exata de palavras
+            const hasDirectWordOverlap = termTokens.some(t => t.length > 2 && catTokens.includes(t));
+            if (hasDirectWordOverlap || catName === lowerTerm) return true;
 
-            // Match fracionado nos sinônimos (Separados por vírgula)
+            // Match fracionado nos sinônimos com word boundaries
             const tags = tagsStr.split(',').map(t => t.trim());
-            return tags.some(tag => tag && (lowerTerm.includes(tag) || tag.includes(lowerTerm)));
+            return tags.some(tag => tag && termTokens.includes(tag.toLowerCase()));
         });
 
         if (exactMatch) {
-            console.log(`[Google Sheets] 🎯 Match Parcial/Tag encontrado para Categoria: ${exactMatch['categoria_geral']}`);
+            console.log(`[Google Sheets] 🎯 Match Exato/Tag restrito encontrado para Categoria: ${exactMatch['categoria_geral']}`);
             return [exactMatch];
         }
     }
@@ -285,9 +290,10 @@ async function searchCategoryInSheet(keywordsArray) {
     const options = {
         includeScore: true,
         useExtendedSearch: true,
-        threshold: 0.2, // Threshold mais de precisão
-        minMatchCharLength: 3, // Proteção contra colisão de preposição
+        threshold: 0.15, // Threshold muito mais rigoroso (menor = mais estrito) para evitar Falso Positivo
+        minMatchCharLength: 4, // Ignora matches soltos menores q 4 letras
         ignoreLocation: true,
+        distance: 10,
         keys: [
             { name: 'categoria_geral', weight: 1.0 },
             { name: 'tags para busca (sinônimos)', weight: 0.8 },
