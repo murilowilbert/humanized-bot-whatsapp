@@ -27,6 +27,7 @@ const userIsProcessing = new Map(); // Trava de concorrência
 const userPausedStates = new Map(); // Controle de Handoff/Pausa
 const userSessions = new Map(); // Controle de Máquina de Estados (Triage, etc)
 const DEBOUNCE_TIME_MS = 5000; // Tempo de espera para o usuário terminar de digitar
+const mutedUsers = new Map(); // Sistema de Cooldown de 24h (Human Takeover)
 
 let sock = null;
 let initialized = false;
@@ -89,12 +90,11 @@ async function sendHumanLikeResponse(jid, text) {
     if (!text) return;
 
     // 1. Extrai TODOS os códigos da resposta inteira para checar se é "Vitrine Rica" (Múltiplos Itens)
-    const regexCodGlobalTotal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
+    const regexCodGlobalTotal = /(?:\[|\{\{)\s*(?:COD|FOTO):\s*([\w-]+)\s*(?:\]|\}\})/gi;
     const allCodMatches = Array.from(text.matchAll(regexCodGlobalTotal));
-    const allExtractedCodes = allCodMatches.map(m => m[1]);
     
-    // Flag de Segurança: Só anexa imagem se for estritamente 1 produto na resposta inteira (Evita Baileys Crash)
-    const shouldAttachMedia = allExtractedCodes.length === 1;
+    // Agora que temos Try/Catch robusto na imagem, o Dispatcher aguenta Vitrine Rica.
+    const shouldAttachMedia = true;
 
     // Resolve as partes por parágrafo
     const parts = text.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
@@ -103,14 +103,14 @@ async function sendHumanLikeResponse(jid, text) {
         let part = parts[i].trim();
         if (!part) continue;
 
-        const regexCodGlobal = /(?:\[|\{\{)\s*COD:\s*([\w-]+)\s*(?:\]|\}\})/gi;
+        const regexCodGlobal = /(?:\[|\{\{)\s*(?:COD|FOTO):\s*([\w-]+)\s*(?:\]|\}\})/gi;
         const codMatches = Array.from(part.matchAll(regexCodGlobal));
         const extractedCodes = codMatches.map(m => m[1]);
 
         // Remove a tag do texto incondicionalmente para manter UI limpa
         part = part.replace(regexCodGlobal, '').trim();
 
-        // Encontra o buffer da imagem apenas se for seguro (ShouldAttachMedia)
+        // Encontra o buffer da imagem
         let fileToSend = null;
         if (shouldAttachMedia && extractedCodes.length > 0) {
             const cod = extractedCodes[0];
@@ -212,6 +212,27 @@ async function setupEvents() {
             msg.message?.imageMessage?.caption ||
             '';
 
+        const rawJid = msg.key?.remoteJid;
+        if (!rawJid) return;
+        
+        // --- 24h COOLDOWN SYSTEM (HUMAN TAKEOVER) ---
+        if (msg.key.fromMe) {
+            // Se a loja enviou mensagem (intervenção humana), muta o usuário por 24h
+            const expireTime = Date.now() + 86400000; // 24 horas em ms
+            mutedUsers.set(rawJid, expireTime);
+            console.log(`[Human Takeover] Intervenção detectada em ${rawJid}. Bot mutado por 24 horas.`);
+            return;
+        } else {
+            // Se o usuário mandou mensagem, checa se ele está mutado
+            if (mutedUsers.has(rawJid)) {
+                if (Date.now() < mutedUsers.get(rawJid)) {
+                    return; // Early Return silencioso
+                } else {
+                    mutedUsers.delete(rawJid); // Expirou, tira do castigo
+                }
+            }
+        }
+
         const quotedObj = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (quotedObj) {
             const quotedText = quotedObj.conversation || quotedObj.extendedTextMessage?.text || quotedObj.imageMessage?.caption || '';
@@ -222,8 +243,6 @@ async function setupEvents() {
         }
 
         // 1. Extração Simples do ID
-        const rawJid = msg.key?.remoteJid;
-        if (!rawJid) return;
         const cleanId = rawJid.split('@')[0];
 
         // 2. Log Universal (Visibilidade Total)
@@ -533,6 +552,19 @@ async function setupEvents() {
                 let finalVisualKeyword = null;
 
                 expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
+
+                // --- SHIELD ANTI-FORNECEDOR ---
+                if (expandedQueryArray && expandedQueryArray.includes("INTENCAO_FORNECEDOR")) {
+                    console.log(`[Shield Fornecedor] Representante comercial detectado em ${jid}. Ignorando IA e mutando por 24h.`);
+                    await sock.sendPresenceUpdate('composing', jid);
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await sock.sendMessage(jid, { text: "Olá! Sou o assistente virtual da loja. Nossa equipe está focada no balcão agora, mas deixarei seu material registrado. Muito obrigado!" });
+                    
+                    // Muta por 24h instantaneamente
+                    mutedUsers.set(jid, Date.now() + 86400000);
+                    userIsProcessing.delete(jid);
+                    return;
+                }
 
                     let cleanSearchTermsArray = expandedQueryArray.length > 0 ? expandedQueryArray : [searchKeywords];
                     // Remove \n de todos os itens do array
