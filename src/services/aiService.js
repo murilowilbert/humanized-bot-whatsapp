@@ -322,6 +322,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 11. MENSAGENS VAZIAS/CURTAS: Se a mensagem do usuário não contiver NENHUMA intenção de busca por produto ou característica (ex: "ok", "obrigado", "tem?", "olá"), você DEVE retornar ESTRITAMENTE um array JSON vazio: []. Não adicione nenhuma explicação de texto.
 12. TERMOS RELATIVOS: Se o usuário pedir variações como "outros", "mais opções", "tem outra", "alternativas", você DEVE olhar o histórico, identificar a categoria principal (ex: "chuveiro") e DESCARTAR o filtro restritivo anterior (ex: a marca específica). Crie um array de busca amplo pela categoria geral (ex: ["chuveiro", "ducha"]) para garantir que o contexto traga marcas concorrentes.
 13. MENSAGENS CITADAS: Se o usuário responder com confirmações (ex: "preciso de uma", "quero esse") a uma mensagem que contenha a tag [Respondendo a: {Produto}], extraia estritamente o Nome do Produto de dentro da tag e use-o como termo de busca principal.
+14. MEDIDAS E TAMANHOS: Ao extrair produtos com medidas (metros, mm, kg), forneça variações curtas e separe a medida do nome base para garantir o match no banco (ex: ["fita isolante 5m", "fita isolante 5", "fita isolante preta"]).
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"

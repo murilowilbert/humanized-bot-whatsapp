@@ -126,23 +126,36 @@ async function sendHumanLikeResponse(jid, text) {
         }
 
         try {
+            let mediaSuccess = false;
             if (fileToSend) {
-                // Envia a Imagem e bota o texto como Legenda (Caption)
-                await sock.sendMessage(jid, {
-                    image: { url: fileToSend },
-                    caption: part.length > 0 ? part : undefined
-                });
-            } else {
-                // Graceful Degradation: Vitrine Rica (>1) ou Arquivo Inexistente -> Envia Apenas Texto
+                try {
+                    // Tenta o envio da imagem
+                    await sock.sendMessage(jid, {
+                        image: { url: fileToSend },
+                        caption: part.length > 0 ? part : undefined
+                    });
+                    mediaSuccess = true; // Se não lançou erro, sucesso!
+                } catch (mediaError) {
+                    console.error(`[Mídia Dispatcher] Falha ao enviar foto ${fileToSend}, fazendo fallback de texto:`, mediaError.message);
+                    mediaSuccess = false; // Força o fallback text-only
+                }
+            }
+            
+            // Fallback Text-Only: Foto não existe ou ocorreu erro no upload dela (Graceful Degradation)
+            if(!mediaSuccess) {
                 if (part.length > 0) {
                     await sock.sendMessage(jid, { text: part });
                 }
             }
 
-            // Pausa sutil entre envio dos parágrafos
+            // Pausa sutil (700ms a 1000ms) para evitar inversão na UI do cliente
             await new Promise(resolve => setTimeout(resolve, 800));
         } catch (error) {
-            console.error(`Erro ao enviar bolha/imagem (Index ${i}):`, error);
+            console.error(`Erro GERAL ao enviar bolha (Index ${i}):`, error);
+            // Último nível absoluto de fallback
+            try { 
+                if (part.length > 0) await sock.sendMessage(jid, { text: part }); 
+            } catch(e) {}
         }
     }
 }
@@ -341,6 +354,12 @@ async function setupEvents() {
             clearTimeout(userProcessingTimers.get(jid));
         }
 
+        // Morte ao Zombie Follow-up: Zera contador de inatividade ao receber input novo
+        if (interactionTimeouts.has(jid)) {
+            clearTimeout(interactionTimeouts.get(jid));
+            interactionTimeouts.delete(jid);
+        }
+
         // 0. Initialize Variables (Moved up for queuing)
         let mediaData = null;
 
@@ -361,11 +380,8 @@ async function setupEvents() {
             await new Promise(resolve => setTimeout(resolve, 800));
 
             let docMsg = "Vou repassar o seu documento para um atendente humano analisar, só um segundo.";
-            if (!isOpen() && !isHoliday()) docMsg = "Deixei o seu documento anotado! Como nossa loja já fechou hoje, um atendente humano vai analisar sua lista amanhã a partir das 08h.";
-            if (isHoliday()) docMsg = "Deixei o seu documento guardado! Como hoje é feriado, voltaremos na segunda a partir das 08h e um atendente vai analisar sua lista.";
-
             await sock.sendMessage(jid, { text: docMsg });
-            await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: "Handoff por Documento" } });
+            await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: docMsg } });
 
             userPausedStates.set(jid, Date.now());
             metricsService.incrementHandoff();
@@ -401,12 +417,6 @@ async function setupEvents() {
         }
 
         // Checks already handled above
-
-        // 1. Check Holidays & Working Hours
-        if (!isAdmin && (isHoliday() || !isOpen())) {
-            await sock.sendMessage(jid, { text: settings.messages.closed });
-            return;
-        }
 
         // 3. Queue the message block
         if (!userMessageQueues.has(jid)) {
@@ -635,19 +645,8 @@ async function setupEvents() {
                                 }
 
                             } else {
-                                console.log(`[Verificação Visual] Nenhuma correspondência exata nos gabaritos (Oráculo retornou NENHUM). Abortando IA Final.`);
-
-                                // Bug Fix 2: Hardcoded Fallback para evitar alucinação
-                                await sock.sendPresenceUpdate('composing', jid);
-                                const fallbackMsg = "Não consegui identificar com certeza o modelo exato pela foto. Você sabe me dizer o nome da linha ou a marca?";
-                                await sock.sendMessage(jid, { text: fallbackMsg });
-
-                                // Update history for context
-                                await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: fallbackMsg } }); // Fix Bug: save as 'model', not 'bot'
-
-                                // Prevent calling the Final LLM by returning early
-                                if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
-                                return;
+                                console.log(`[Verificação Visual] Oráculo retornou NENHUM. Permitindo Fallback para a Busca Textual (Unified Search) prosseguir para buscar o termo genérico visual.`);
+                                // Não força early return, permitindo que a IA Final julgue o stockContext da frase/imagem.
                             }
                         } else {
                             console.log("[Verificação Visual] Nenhuma foto de gabarito encontrada no HD para os top candidatos.");
@@ -796,6 +795,10 @@ async function setupEvents() {
                 // B) Human Handoff (Bloqueia repasse imediato se foi detectada a Triagem de Categorias Gerais)
                 let isTriageActive = false; // Add variable definition here to prevent scope issues
                 if (response.needsHandoff && !isTriageActive) {
+                    if (interactionTimeouts.has(jid)) {
+                        clearTimeout(interactionTimeouts.get(jid));
+                        interactionTimeouts.delete(jid);
+                    }
                     userPausedStates.set(jid, getBrazilDateString());
                     metricsService.incrementHandoff();
                     return; // Encerra o fluxo aqui para não iniciar timer de inatividade
@@ -803,9 +806,15 @@ async function setupEvents() {
 
                 // E) Set Inactivity Follow-up
                 const isConversationEnd = combinedText.toLowerCase().includes('obrigado') ||
-                    combinedText.toLowerCase().includes('valeu');
+                    combinedText.toLowerCase().includes('valeu') || combinedText.toLowerCase().includes('tchau');
 
-                if (!isConversationEnd) {
+                if (isConversationEnd) {
+                    // Morte ao Zombie Follow-up: Limpa o timer rigidamente em conversas finalizadas organicamente
+                    if (interactionTimeouts.has(jid)) {
+                        clearTimeout(interactionTimeouts.get(jid));
+                        interactionTimeouts.delete(jid);
+                    }
+                } else {
                     // Check if we literally just asked this a few minutes ago.
                     const recentBotMsgs = await prisma.chatHistory.findMany({
                         where: { phoneNumber: headers, role: 'model' },
