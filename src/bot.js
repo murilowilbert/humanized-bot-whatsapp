@@ -762,6 +762,16 @@ async function setupEvents() {
                 // Clean response text
                 let fullText = response.text;
 
+                // 2. Interceptação e Hardcode de Falhas (Fim das Frases Robóticas)
+                if (fullText.includes("[JSON_HANDOFF]")) {
+                    const fallbackPhrases = [
+                        "Vou pedir pro pessoal do balcão dar uma olhada na prateleira se temos esse exato, só um segundo!",
+                        "Deixa eu repassar pra um dos atendentes verificar aqui na loja pra você, rapidinho.",
+                        "Vou dar uma confirmada com o pessoal aqui do balcão pra ver as opções que temos, te chamo já já!"
+                    ];
+                    fullText = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
+                }
+
                 // Check for Location Action
                 const locationMatch = fullText.match(/\[ACTION:\s*SEND_LOCATION\]/i);
                 if (locationMatch) {

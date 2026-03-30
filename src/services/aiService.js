@@ -52,15 +52,48 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
 
             const isFirstMessage = chatHistory.length <= 1; // includes current message
 
-            const workingHoursText = "### HORÁRIOS DE ATENDIMENTO:\n" +
-                "- Segunda a Sexta-feira: 08:00 às 12:00 e 13:30 às 19:00\n" +
-                "- Sábado: 08:00 às 12:00 e 14:00 às 17:30\n" +
-                "- Domingo: Fechado";
+            // 1. Relógio Blindado e Injeção de Contexto de Tempo
+            const nowTime = new Date();
+            const timeFormatter = new Intl.DateTimeFormat('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                hour: '2-digit', minute: '2-digit', hour12: false
+            });
+            const dayFormatter = new Intl.DateTimeFormat('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                weekday: 'long'
+            });
+            const currentTimeStr = timeFormatter.format(nowTime);
+            let currentDayStr = dayFormatter.format(nowTime);
+            // Capitalize first letter
+            currentDayStr = currentDayStr.charAt(0).toUpperCase() + currentDayStr.slice(1);
 
-            // Injecting current date context
-            const currentDateTime = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-            const currentDay = new Date().toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' });
-            const systemTimeContext = `CONTEXTO TEMPORAL: Hoje é ${currentDay}, ${currentDateTime}. O horário de funcionamento da loja é de Segunda a Sexta das 08:00 às 18:00, e Sábados das 08:00 às 12:00. Use APENAS este relógio para informar se estamos abertos ou fechados. Se o cliente perguntar fora do horário, avise que o atendimento humano voltará no próximo dia útil.`;
+            const nowParts = currentTimeStr.split(':');
+            const currentTotal = parseInt(nowParts[0]) * 60 + parseInt(nowParts[1]);
+
+            // Formatação do Dia (0 = Domingo) compatível com o getDay() local do settings
+            const localDateForDay = new Date(nowTime.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+            const currentDayOfWeekly = localDateForDay.getDay();
+
+            const todaySchedule = settings.workingHours && settings.workingHours[currentDayOfWeekly];
+            let storeStatusStr = "FECHADA";
+            let nextOpenStr = "amanhã às 08:00"; // Fallback genérico
+
+            if (todaySchedule && todaySchedule.length > 0) {
+                const isOpenNow = todaySchedule.some(range => {
+                    const [startH, startM] = range.start.split(':').map(Number);
+                    const [endH, endM] = range.end.split(':').map(Number);
+                    return currentTotal >= (startH * 60 + startM) && currentTotal < (endH * 60 + endM);
+                });
+                if (isOpenNow) {
+                    storeStatusStr = "ABERTA";
+                } else if (currentTotal < 720) {
+                     nextOpenStr = "hoje mais tarde";
+                }
+            } else if (currentDayOfWeekly === 0 || currentDayOfWeekly === 6) { // Final de semana estendido fechado
+                nextOpenStr = "Segunda às 08:00";
+            }
+
+            const systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está atualmente ${storeStatusStr}. Só abriremos ${nextOpenStr}. Use apenas esse relógio!]`;
 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
                 "- REGRA ANTI-LOOP (ABSOLUTA): Verifique o histórico de mensagens. Se VOCÊ acabou de fazer uma pergunta de afunilamento na mensagem anterior e o USUÁRIO acabou de RESPONDER a essa preferência, VOCÊ É ESTRITAMENTE PROIBIDO de fazer uma nova pergunta genérica. Você DEVE cruzar a resposta do usuário com os [ESTOQUE ATUALIZADO], selecionar as 2 ou 3 opções que melhor atendem ao pedido, informar os preços diretamente e explicar brevemente a diferença entre elas.\n" +
@@ -83,7 +116,7 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
                 "- 3. Preparação para o Handoff: O seu objetivo ao fazer essa pergunta não é concluir a venda, mas sim recolher um detalhe crucial que falta (ex: medida, marca, material) para que o atendente humano já receba o cliente com a informação mastigada. Após o cliente responder a essa sua pergunta dinâmica, confirme a anotação e acione o Handoff invisível imediatamente.";
 
             const sessionPrompt = (offHoursContext ? `### ALERTA DE HORÁRIO COMERCIAL (SIGA ESTRITAMENTE):\n${offHoursContext}\n\n` : "") +
-                `### INFORMAÇÕES DA LOJA:\n${storeInfo}\n\n${workingHoursText}\n\n${stockInfoText}\n\n` +
+                `### INFORMAÇÕES DA LOJA:\n${storeInfo}\n\n${stockInfoText}\n\n` +
                 `${specificRules}\n\n` +
                 `${whatsappFormattingInstruct}\n\n` +
                 `### INSTRUÇÃO DE SESSÃO:\n` +
@@ -142,8 +175,26 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
                 }
             }
 
-            // Detect Handoff
-            const needsHandoff = text.toLowerCase().includes("atendente humano") || text.toLowerCase().includes("fixar nossa conversa");
+            // Identifica Handoff Hardcoded por JSON
+            let isJsonHandoff = false;
+            try {
+                // Tenta fazer parse na resposta braba (pode vir como ```json ... ```)
+                const cleanJsonParse = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+                const obj = JSON.parse(cleanJsonParse);
+                if (obj.intent === 'HANDOFF') {
+                    isJsonHandoff = true;
+                }
+            } catch (e) {
+                // É texto normal
+            }
+
+            // Detect Handoff Legacy textual ou via JSON
+            const needsHandoff = isJsonHandoff || text.toLowerCase().includes("atendente humano") || text.toLowerCase().includes("fixar nossa conversa") || text.toLowerCase().includes("vou confirmar com o pessoal");
+
+            // Se for JSON de handoff, devolvemos uma flag explícita pra interface limpar o fallback
+            if (isJsonHandoff) {
+                text = "[JSON_HANDOFF]";
+            }
 
             return {
                 text: text,
