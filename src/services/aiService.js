@@ -74,26 +74,44 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
             const localDateForDay = new Date(nowTime.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
             const currentDayOfWeekly = localDateForDay.getDay();
 
-            const todaySchedule = settings.workingHours && settings.workingHours[currentDayOfWeekly];
             let storeStatusStr = "FECHADA";
-            let nextOpenStr = "amanhã às 08:00"; // Fallback genérico
+            let nextOpenStr = "";
 
-            if (todaySchedule && todaySchedule.length > 0) {
-                const isOpenNow = todaySchedule.some(range => {
-                    const [startH, startM] = range.start.split(':').map(Number);
-                    const [endH, endM] = range.end.split(':').map(Number);
-                    return currentTotal >= (startH * 60 + startM) && currentTotal < (endH * 60 + endM);
-                });
-                if (isOpenNow) {
+            // Lógica de Segunda a Sexta (Dias 1 a 5)
+            if (currentDayOfWeekly >= 1 && currentDayOfWeekly <= 5) {
+                if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 810 && currentTotal < 1140)) {
                     storeStatusStr = "ABERTA";
-                } else if (currentTotal < 720) {
-                     nextOpenStr = "hoje mais tarde";
+                } else if (currentTotal < 480) {
+                    nextOpenStr = "hoje às 08:00";
+                } else if (currentTotal >= 720 && currentTotal < 810) {
+                    nextOpenStr = "hoje às 13:30"; // Horário de Almoço
+                } else {
+                    nextOpenStr = currentDayOfWeekly === 5 ? "amanhã (sábado) às 08:00" : "amanhã às 08:00";
                 }
-            } else if (currentDayOfWeekly === 0 || currentDayOfWeekly === 6) { // Final de semana estendido fechado
-                nextOpenStr = "Segunda às 08:00";
+            } 
+            // Lógica de Sábado (Dia 6)
+            else if (currentDayOfWeekly === 6) {
+                if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 840 && currentTotal < 1050)) {
+                    storeStatusStr = "ABERTA";
+                } else if (currentTotal < 480) {
+                    nextOpenStr = "hoje às 08:00";
+                } else if (currentTotal >= 720 && currentTotal < 840) {
+                    nextOpenStr = "hoje às 14:00"; // Horário de Almoço de Sábado
+                } else {
+                    nextOpenStr = "segunda-feira às 08:00";
+                }
+            } 
+            // Lógica de Domingo (Dia 0)
+            else {
+                nextOpenStr = "segunda-feira às 08:00";
             }
 
-            const systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está atualmente ${storeStatusStr}. Só abriremos ${nextOpenStr}. Use apenas esse relógio!]`;
+            // Montagem inteligente da frase para não haver contradição no prompt
+            let openingPhrase = '';
+            if (storeStatusStr === 'FECHADA') {
+                openingPhrase = ' Só abriremos ' + nextOpenStr + '.';
+            }
+            const systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está atualmente ${storeStatusStr}.${openingPhrase} Use APENAS esta informação como relógio oficial.]`;
 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
                 "- REGRA ANTI-LOOP (ABSOLUTA): Verifique o histórico de mensagens. Se VOCÊ acabou de fazer uma pergunta de afunilamento na mensagem anterior e o USUÁRIO acabou de RESPONDER a essa preferência, VOCÊ É ESTRITAMENTE PROIBIDO de fazer uma nova pergunta genérica. Você DEVE cruzar a resposta do usuário com os [ESTOQUE ATUALIZADO], selecionar as 2 ou 3 opções que melhor atendem ao pedido, informar os preços diretamente e explicar brevemente a diferença entre elas.\n" +
