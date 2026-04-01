@@ -15,7 +15,7 @@ const model = genAI.getGenerativeModel(modelConfig);
  * @param {Array} stockContext - Products available/relevant
  * @param {Function} onWait - Optional callback when waiting for Rate Limits
  */
-async function generateResponse(userText, mediaData, chatHistory, stockContext, onWait = null, offHoursContext = null) {
+async function generateResponse(userText, mediaData, chatHistory, stockContext, onWait = null, offHoursContext = null, dailyGreetingContext = null) {
     // Retry Logic
     const MAX_RETRIES = 5;
     let delay = 2000; // Start with 2 seconds
@@ -137,9 +137,10 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
                 `### INFORMAÇÕES DA LOJA:\n${storeInfo}\n\n${stockInfoText}\n\n` +
                 `${specificRules}\n\n` +
                 `${whatsappFormattingInstruct}\n\n` +
-                `### INSTRUÇÃO DE SESSÃO:\n` +
+                `### INSTRUÇÃO DE SESSÃO E IDENTIDADE:\n` +
+                (dailyGreetingContext ? `${dailyGreetingContext}\n` : "") +
                 (isFirstMessage
-                    ? "Esta é a PRIMEIRA mensagem. Seja humano."
+                    ? "Esta é a PRIMEIRA mensagem que o bot recebe no banco de dados, mas baseie-se estritamente na regra de saudação (dailyGreetingContext) fornecida acima se já houveram conversas hoje."
                     : "Aja como humano. Responda diretamente e seja natural.");
 
             // Otimização de Janela de Contexto (Rolling Window)

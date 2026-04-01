@@ -1,5 +1,6 @@
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+// Implementando Persistent Store para que o Baileys não trave no boot de histórico
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers, fetchLatestBaileysVersion, makeInMemoryStore } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
@@ -31,6 +32,16 @@ const mutedUsers = new Map(); // Sistema de Cooldown de 24h (Human Takeover)
 
 let sock = null;
 let initialized = false;
+
+// Configuração do Persistent Store do Baileys
+const storeFilePath = path.join(__dirname, '../data/baileys_store.json');
+const store = makeInMemoryStore({});
+store.readFromFile(storeFilePath);
+
+// Salva o store a cada 10 segundos
+setInterval(() => {
+    store.writeToFile(storeFilePath);
+}, 10_000);
 
 function getBrazilDateString() {
     // Retorna YYYY-MM-DD no fuso horário do Brasil
@@ -516,6 +527,21 @@ async function setupEvents() {
                 const ttlLimit = Date.now() - (36 * 60 * 60 * 1000);
                 const recentRecords = historyRecords.filter(r => new Date(r.createdAt).getTime() > ttlLimit);
 
+                // --- SISTEMA DE MEMÓRIA DO DIA (GREETINGS) ---
+                const nowSP = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+                nowSP.setHours(0, 0, 0, 0); // 00:00:00 de hoje no fuso SP
+                const startOfTodayMs = nowSP.getTime();
+
+                const historyOfToday = recentRecords.filter(r => new Date(r.createdAt).getTime() >= startOfTodayMs);
+                const hasStoreRepliedToday = historyOfToday.some(r => r.role === 'model' || r.fromMe === true);
+
+                let dailyGreetingContext = "";
+                if (!hasStoreRepliedToday) {
+                    dailyGreetingContext = "[CONTEXTO: Esta é a primeira interação do dia. Inicie com uma saudação educada (Bom dia/Boa tarde/Boa noite) conforme o relógio do sistema e ofereça ajuda.]";
+                } else {
+                    dailyGreetingContext = "[CONTEXTO: O atendimento de hoje já iniciou. PROIBIDO repetir saudações iniciais. Continue a conversa de onde parou de forma direta e prestativa.]";
+                }
+
                 // Otimização de Janela de Contexto (Rolling Window)
                 // Limita a 12 interações parciais para não estourar o limite de tokens do LLM.
                 let chatsHistory = recentRecords.map(r => ({ role: r.role, content: r.content }));
@@ -718,7 +744,7 @@ async function setupEvents() {
 
                 let response;
                 try {
-                    response = await aiService.generateResponse(finalPromptInput, lastMedia, chatsHistory, stockContext, onWait, offHoursContext);
+                    response = await aiService.generateResponse(finalPromptInput, lastMedia, chatsHistory, stockContext, onWait, offHoursContext, dailyGreetingContext);
                 } catch (apiError) {
                     console.error("🚨 [ERRO FATAL API] Falha ou Timeout na geração da resposta FINAL pelo LLM:", apiError);
 
@@ -926,6 +952,9 @@ async function initialize() {
             syncFullHistory: false,
             generateHighQualityLinkPreview: true
         });
+
+        // Conecta o socket ao InMemoryStore para registrar requisições (sincronizar status/criação, etc)
+        store.bind(sock.ev);
 
         setupEvents();
 
