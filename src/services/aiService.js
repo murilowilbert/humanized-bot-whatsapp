@@ -62,6 +62,14 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
                 timeZone: 'America/Sao_Paulo',
                 weekday: 'long'
             });
+
+            // ISO FORMATTING PARA CALENDÁRIO NO FUSO SP
+            const yearFormatter = new Intl.DateTimeFormat('en-CA', { // en-CA gives YYYY-MM-DD
+                timeZone: 'America/Sao_Paulo',
+                year: 'numeric', month: '2-digit', day: '2-digit'
+            });
+            const currentDateIso = yearFormatter.format(nowTime); // ex: '2026-04-03'
+
             const currentTimeStr = timeFormatter.format(nowTime);
             let currentDayStr = dayFormatter.format(nowTime);
             // Capitalize first letter
@@ -76,42 +84,73 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
 
             let storeStatusStr = "FECHADA";
             let nextOpenStr = "";
+            let holidayReason = "";
 
-            // Lógica de Segunda a Sexta (Dias 1 a 5)
-            if (currentDayOfWeekly >= 1 && currentDayOfWeekly <= 5) {
-                if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 810 && currentTotal < 1140)) {
-                    storeStatusStr = "ABERTA";
-                } else if (currentTotal < 480) {
-                    nextOpenStr = "hoje às 08:00";
-                } else if (currentTotal >= 720 && currentTotal < 810) {
-                    nextOpenStr = "hoje às 13:30"; // Horário de Almoço
-                } else {
-                    nextOpenStr = currentDayOfWeekly === 5 ? "amanhã (sábado) às 08:00" : "amanhã às 08:00";
+            // PRIORIDADE MÁXIMA: Verificação do array storeExceptions
+            let isExceptionDay = false;
+            let targetException = null;
+
+            try {
+                const exceptionsPath = path.join(__dirname, '../../data/store_exceptions.json');
+                if (fs.existsSync(exceptionsPath)) {
+                    const storeExceptions = JSON.parse(fs.readFileSync(exceptionsPath, 'utf8'));
+                    targetException = storeExceptions.find(ex => ex.date === currentDateIso);
+                    if (targetException) {
+                        isExceptionDay = true;
+                    }
                 }
-            } 
-            // Lógica de Sábado (Dia 6)
-            else if (currentDayOfWeekly === 6) {
-                if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 840 && currentTotal < 1050)) {
-                    storeStatusStr = "ABERTA";
-                } else if (currentTotal < 480) {
-                    nextOpenStr = "hoje às 08:00";
-                } else if (currentTotal >= 720 && currentTotal < 840) {
-                    nextOpenStr = "hoje às 14:00"; // Horário de Almoço de Sábado
-                } else {
+            } catch (err) {
+                console.error("[Calendário de Exceções] Falha ao ler store_exceptions.json:", err);
+            }
+
+            if (isExceptionDay) {
+                storeStatusStr = "FECHADA (Feriado/Evento)";
+                holidayReason = targetException.reason;
+                nextOpenStr = targetException.returnDate;
+            } else {
+                // Lógica Rotineira Padrão (Sem Feriados)
+                // Lógica de Segunda a Sexta (Dias 1 a 5)
+                if (currentDayOfWeekly >= 1 && currentDayOfWeekly <= 5) {
+                    if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 810 && currentTotal < 1140)) {
+                        storeStatusStr = "ABERTA";
+                    } else if (currentTotal < 480) {
+                        nextOpenStr = "hoje às 08:00";
+                    } else if (currentTotal >= 720 && currentTotal < 810) {
+                        nextOpenStr = "hoje às 13:30"; // Horário de Almoço
+                    } else {
+                        nextOpenStr = currentDayOfWeekly === 5 ? "amanhã (sábado) às 08:00" : "amanhã às 08:00";
+                    }
+                } 
+                // Lógica de Sábado (Dia 6)
+                else if (currentDayOfWeekly === 6) {
+                    if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 840 && currentTotal < 1050)) {
+                        storeStatusStr = "ABERTA";
+                    } else if (currentTotal < 480) {
+                        nextOpenStr = "hoje às 08:00";
+                    } else if (currentTotal >= 720 && currentTotal < 840) {
+                        nextOpenStr = "hoje às 14:00"; // Horário de Almoço de Sábado
+                    } else {
+                        nextOpenStr = "segunda-feira às 08:00";
+                    }
+                } 
+                // Lógica de Domingo (Dia 0)
+                else {
                     nextOpenStr = "segunda-feira às 08:00";
                 }
-            } 
-            // Lógica de Domingo (Dia 0)
-            else {
-                nextOpenStr = "segunda-feira às 08:00";
             }
 
-            // Montagem inteligente da frase para não haver contradição no prompt
-            let openingPhrase = '';
-            if (storeStatusStr === 'FECHADA') {
-                openingPhrase = ' Só abriremos ' + nextOpenStr + '.';
+            // Montagem inteligente da frase
+            let systemTimeContext = "";
+
+            if (isExceptionDay) {
+                systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está FECHADA devido ao feriado/motivo: ${holidayReason}. Só retornaremos o atendimento em: ${nextOpenStr}. Informe isso ao cliente com naturalidade.]`;
+            } else {
+                let openingPhrase = '';
+                if (storeStatusStr === 'FECHADA') {
+                    openingPhrase = ' Só abriremos ' + nextOpenStr + '.';
+                }
+                systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está atualmente ${storeStatusStr}.${openingPhrase} Use APENAS esta informação como relógio oficial.]`;
             }
-            const systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está atualmente ${storeStatusStr}.${openingPhrase} Use APENAS esta informação como relógio oficial.]`;
 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
                 "- REGRA ANTI-LOOP (ABSOLUTA): Verifique o histórico de mensagens. Se VOCÊ acabou de fazer uma pergunta de afunilamento na mensagem anterior e o USUÁRIO acabou de RESPONDER a essa preferência, VOCÊ É ESTRITAMENTE PROIBIDO de fazer uma nova pergunta genérica. Você DEVE cruzar a resposta do usuário com os [ESTOQUE ATUALIZADO], selecionar as 2 ou 3 opções que melhor atendem ao pedido, informar os preços diretamente e explicar brevemente a diferença entre elas.\n" +
