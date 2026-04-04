@@ -67,15 +67,31 @@ jobs:
             echo "Aguardando o bot ligar o motor..."
             sleep 20
             
-            # Fica testando a porta a cada 5 segundos até o bot responder (espera no máximo 2 minutos)
-            timeout 120 bash -c 'while [[ "$(curl -s -o /dev/null -w ''%{http_code}'' http://localhost:3000/)" != "200" && "$(curl -s -o /dev/null -w ''%{http_code}'' http://localhost:3000/)" != "404" ]]; do echo "Aguardando inicializacao do Node..."; sleep 5; done' || true
+            # Enhanced health check with better diagnostics
+            RETRY_COUNT=0
+            MAX_RETRIES=24
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ 2>/dev/null || echo "000")
+              if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+                echo "✓ Bot respondendo com HTTP $HTTP_CODE"
+                break
+              fi
+              echo "Tentativa $((RETRY_COUNT+1))/$MAX_RETRIES - Status: $HTTP_CODE"
+              RETRY_COUNT=$((RETRY_COUNT+1))
+              sleep 5
+            done
             
-            # Aguarda margem segura para inicialização paralela do Baileys
+            if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+              echo "✗ Bot não iniciou após 120 segundos"
+              echo "Logs do container para debug:"
+              docker logs bot-marlene
+              exit 1
+            fi
+            
             sleep 10
             
             echo "Servidor 100% online! Disparando configurações REST remotas..."
             
-            # Disparos de configuração API POST garantidos no ambiente Server (localhost interno)
             curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"power","enabled":true}'
             curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"test","enabled":true}'
             curl -X POST http://localhost:3000/api/toggle -H "Content-Type: application/json" -d '{"type":"fullstock","enabled":false}'
