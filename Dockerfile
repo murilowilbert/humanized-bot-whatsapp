@@ -14,4 +14,6 @@ COPY . .
 # ESSA É A LINHA QUE VAI SALVAR O DIA:
 RUN npx prisma generate
 
-CMD npx prisma db push && node index.js
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+CMD ["/app/entrypoint.sh"]
