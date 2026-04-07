@@ -1,6 +1,5 @@
 require('dotenv').config();
-// Implementando Persistent Store para que o Baileys não trave no boot de histórico
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers, fetchLatestBaileysVersion, makeInMemoryStore } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
@@ -33,15 +32,7 @@ const mutedUsers = new Map(); // Sistema de Cooldown de 24h (Human Takeover)
 let sock = null;
 let initialized = false;
 
-// Configuração do Persistent Store do Baileys
-const storeFilePath = path.join(__dirname, '../data/baileys_store.json');
-const store = makeInMemoryStore({});
-store.readFromFile(storeFilePath);
 
-// Salva o store a cada 10 segundos
-setInterval(() => {
-    store.writeToFile(storeFilePath);
-}, 10_000);
 
 function getBrazilDateString() {
     // Retorna YYYY-MM-DD no fuso horário do Brasil
@@ -953,8 +944,7 @@ async function initialize() {
             generateHighQualityLinkPreview: true
         });
 
-        // Conecta o socket ao InMemoryStore para registrar requisições (sincronizar status/criação, etc)
-        store.bind(sock.ev);
+
 
         setupEvents();
 
