@@ -12,10 +12,12 @@ const model = genAI.getGenerativeModel(modelConfig);
  * @param {string} userText
  * @param {object} mediaData { mimeType, data (base64) } - Optional
  * @param {Array} chatHistory
+ * @param {Array} audioParts - Arrays with audio files { inlineData... }
+ * @param {Array} chatHistory - Previous messages
  * @param {Array} stockContext - Products available/relevant
  * @param {Function} onWait - Optional callback when waiting for Rate Limits
  */
-async function generateResponse(userText, mediaData, chatHistory, stockContext, onWait = null, offHoursContext = null, dailyGreetingContext = null) {
+async function generateResponse(userText, imageParts, audioParts, chatHistory, stockContext, onWait = null, offHoursContext = null, dailyGreetingContext = null) {
     // Retry Logic
     const MAX_RETRIES = 5;
     let delay = 2000; // Start with 2 seconds
@@ -201,17 +203,17 @@ async function generateResponse(userText, mediaData, chatHistory, stockContext, 
                 }
             }
 
-            // Append current media to the LAST user message
-            if (mediaData && contents.length > 0 && contents[contents.length - 1].role === 'user') {
-                contents[contents.length - 1].parts.push({
-                    inlineData: {
-                        mimeType: mediaData.mimeType,
-                        data: mediaData.data
-                    }
-                });
+            // Append ALL media to the LAST user message
+            if ((imageParts.length > 0 || audioParts.length > 0) && contents.length > 0 && contents[contents.length - 1].role === 'user') {
+                for (const img of imageParts) {
+                    contents[contents.length - 1].parts.push(img);
+                }
+                for (const aud of audioParts) {
+                    contents[contents.length - 1].parts.push(aud);
+                }
             }
 
-            console.log(`[AI] Gerando resposta. Histórico: ${contents.length} msgs. Primeira: ${isFirstMessage}`);
+            console.log(`[AI] Gerando resposta. Histórico: ${contents.length} msgs. Imagens: ${imageParts.length}, Áudios: ${audioParts.length}`);
 
             const result = await model.generateContent({
                 contents: contents,
@@ -323,16 +325,21 @@ async function transcribeAudio(audioBuffer) {
 /**
  * Pre-Flight check para analisar imagem antes de puxar estoque
  */
-async function extractImageKeywords(mediaData, textContent) {
+async function extractImageKeywords(imageParts, textContent) {
+    if (!imageParts || imageParts.length === 0) return textContent;
     try {
+        const parts = [
+            { text: `Aja como um assistente de ferragem. O cliente mandou fotos no WhatsApp com a legenda/mensagem: "${textContent || 'Nenhuma legenda'}". \n\nTAREFA 1: Extraia UMA DESCRIÇÃO NEUTRA das características físicas primárias do que está nas imagens (ex: 'chuveiro eletrico branco', 'cano de pvc').\n\nTAREFA 2: Analise a legenda. Se a legenda for genérica (ex: 'tem esse?', 'quanto custa', 'olha isso', 'esse aqui'), IGNORE o texto do usuário e retorne APENAS a descrição física gerada na Tarefa 1. Se a legenda for ESPECÍFICA contendo metragens, tamanhos ou detalhes complementares (ex: 'tem desse de 150mm?', 'cabo igual esse de 5mm'), CONCATENE a descrição física com a informação útil (ex: 'cabo de cobre 5mm', 'tubo pvc 150mm').\n\nREGRA RESTRITA: Retorne APENAS O TEXTO FINAL de busca, sem explicações, sem aspas, numa única linha. PROIBIDO CHUTAR MARCAS OU LINHAS COMERCIAIS se o texto da marca não estiver 100% legível na embalagem do produto.` }
+        ];
+        for (const img of imageParts) {
+            parts.push(img);
+        }
+
         const result = await model.generateContent({
             contents: [
                 {
                     role: 'user',
-                    parts: [
-                        { text: `Aja como um assistente de ferragem. O cliente mandou a seguinte foto no WhatsApp com a legenda/mensagem: "${textContent || 'Nenhuma legenda'}". \n\nTAREFA 1: Extraia UMA DESCRIÇÃO NEUTRA das características físicas primárias do que está na imagem (ex: 'chuveiro eletrico branco', 'cano de pvc').\n\nTAREFA 2: Analise a legenda. Se a legenda for genérica (ex: 'tem esse?', 'quanto custa', 'olha isso', 'esse aqui'), IGNORE o texto do usuário e retorne APENAS a descrição física gerada na Tarefa 1. Se a legenda for ESPECÍFICA contendo metragens, tamanhos ou detalhes complementares (ex: 'tem desse de 150mm?', 'cabo igual esse de 5mm'), CONCATENE a descrição física com a informação útil (ex: 'cabo de cobre 5mm', 'tubo pvc 150mm').\n\nREGRA RESTRITA: Retorne APENAS O TEXTO FINAL de busca, sem explicações, sem aspas, numa única linha. PROIBIDO CHUTAR MARCAS OU LINHAS COMERCIAIS se o texto da marca não estiver 100% legível na embalagem do produto.` },
-                        { inlineData: { mimeType: mediaData.mimeType, data: mediaData.data } }
-                    ]
+                    parts: parts
                 }
             ],
             systemInstruction: { parts: [{ text: "Você é um extrator semântico cirúrgico. Você junta imagens com intenções textuais criando queries de banco de dados extremamente curtas." }] }

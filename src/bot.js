@@ -424,12 +424,9 @@ async function setupEvents() {
                 if (buffer) {
                     if (messageType === 'imageMessage') {
                         mediaData = { mimeType: msg.message.imageMessage.mimetype, data: buffer.toString('base64') };
-                        // Edge Case 2: Imagem Órfã
-                        textContent = textContent || "Pode me ajudar a identificar o modelo e as especificações deste produto na foto?";
                     } else if (messageType === 'audioMessage' || messageType === 'pttMessage') {
                         const audioMime = msg.message[messageType].mimetype;
                         mediaData = { mimeType: audioMime.split(';')[0], data: buffer.toString('base64') };
-                        textContent = textContent || "[Áudio do Usuário]";
                     }
                 }
             } catch (e) {
@@ -492,11 +489,18 @@ async function setupEvents() {
                 // Extract context and combine texts
                 // We'll use the last media provided (or merge them if your AI supports multiple, but usually one is enough per burst)
                 let combinedText = '';
-                let lastMedia = null;
+                let imageParts = [];
+                let audioParts = [];
 
                 for (const msgData of queue) {
                     if (msgData.text) combinedText += msgData.text + "\\n";
-                    if (msgData.media) lastMedia = msgData.media;
+                    if (msgData.media) {
+                        if (msgData.media.mimeType.startsWith('image/')) {
+                            imageParts.push({ inlineData: { data: msgData.media.data, mimeType: msgData.media.mimeType } });
+                        } else if (msgData.media.mimeType.startsWith('audio/')) {
+                            audioParts.push({ inlineData: { data: msgData.media.data, mimeType: 'audio/ogg' } });
+                        }
+                    }
                 }
 
                 // Clear the queue for this user
@@ -555,9 +559,9 @@ async function setupEvents() {
                     recentHistory = recentRecords.slice(-6).map(r => ({ role: r.role, content: r.content }));
                 }
 
-                if (lastMedia && lastMedia.mimeType.startsWith('image/')) {
+                if (imageParts.length > 0) {
                     await sock.sendPresenceUpdate('composing', jid);
-                    searchKeywords = await aiService.extractImageKeywords(lastMedia, searchKeywords);
+                    searchKeywords = await aiService.extractImageKeywords(imageParts, searchKeywords);
                 }
 
                 await sock.sendPresenceUpdate('composing', jid); // Status "digitando..."
@@ -735,7 +739,7 @@ async function setupEvents() {
 
                 let response;
                 try {
-                    response = await aiService.generateResponse(finalPromptInput, lastMedia, chatsHistory, stockContext, onWait, offHoursContext, dailyGreetingContext);
+                    response = await aiService.generateResponse(finalPromptInput, imageParts, audioParts, chatsHistory, stockContext, onWait, offHoursContext, dailyGreetingContext);
                 } catch (apiError) {
                     console.error("🚨 [ERRO FATAL API] Falha ou Timeout na geração da resposta FINAL pelo LLM:", apiError);
 
