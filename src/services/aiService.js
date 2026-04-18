@@ -173,7 +173,8 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 "- 1. Filtro de Contexto (Não seja repetitivo): Antes de fazer qualquer pergunta baseada na coluna Perguntas_Recomendadas, VOCÊ DEVE cruzar essas perguntas com o histórico da conversa. Se o cliente já forneceu uma informação (ex: já disse a cor, a marca ou o tipo), É ESTRITAMENTE PROIBIDO perguntar isso novamente. Risque mentalmente essa pergunta do seu roteiro.\n" +
                 "- 2. Pacing Conversacional (Sem Textões): NUNCA envie todas as perguntas da coluna de uma vez só. Sintetize a informação. Escolha apenas UMA ou DUAS perguntas mais relevantes que ainda não foram respondidas e faça-as de forma curta, natural e direta.\n" +
                 "- 3. Preparação para o Handoff: O seu objetivo ao fazer essa pergunta não é concluir a venda, mas sim recolher um detalhe crucial que falta (ex: medida, marca, material) para que o atendente humano já receba o cliente com a informação mastigada. Após o cliente responder a essa sua pergunta dinâmica, confirme a anotação e acione o Handoff invisível imediatamente.\n" +
-                "- [INTERPRETAÇÃO FONÉTICA]: Se o cliente escrever palavras com erros ortográficos (como 'acento'), use o contexto da loja para deduzir o item correto (assento sanitário). Responda com a grafia correta de forma natural e empática, NUNCA corrigindo o cliente ou mencionando o erro de digitação.";
+                "- [INTERPRETAÇÃO FONÉTICA]: Se o cliente escrever palavras com erros ortográficos (como 'acento'), use o contexto da loja para deduzir o item correto (assento sanitário). Responda com a grafia correta de forma natural e empática, NUNCA corrigindo o cliente ou mencionando o erro de digitação.\n" +
+                "- [REGRA DE PRECIFICAÇÃO]: VOCÊ É ESTRITAMENTE PROIBIDO DE INVENTAR OU DEDUZIR PREÇOS. Se o preço exato do produto solicitado não estiver no bloco [Itens no Contexto], você DEVE dizer que precisa confirmar o valor no sistema. Jamais utilize seu conhecimento prévio para dar preços.";
 
             const sessionPrompt = (offHoursContext ? `### ALERTA DE HORÁRIO COMERCIAL (SIGA ESTRITAMENTE):\n${offHoursContext}\n\n` : "") +
                 `### INFORMAÇÕES DA LOJA:\n${storeInfo}\n\n${stockInfoText}\n\n` +
@@ -264,17 +265,12 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
 
         } catch (error) {
             console.error(`❌ Erro IA (Tentativa ${attempt}/${MAX_RETRIES}):`, error.message);
-
-            // If it's the last attempt, return fallback
-            if (attempt === MAX_RETRIES) {
-                // Ao retornar o throw, o bot.js vai capturar e anunciar o Timeout Fallback
-                throw new Error(`[AI Timeout] Limite de ${MAX_RETRIES} tentativas alcançado.`);
-            }
+            console.error('[Erro Gemini API]:', error); // Log detalhado conforme solicitado
 
             // Check if retryable (429 or 503)
-            const isRetryable = error.message.includes('429') || error.message.includes('503') || error.message.includes('Overloaded');
+            const isRetryable = error.message.includes('429') || error.message.includes('503') || error.message.includes('Overloaded') || error.message.includes('fetch failed');
 
-            if (isRetryable) {
+            if (isRetryable && attempt < MAX_RETRIES) {
                 let waitTime = delay;
                 // Ajustado para suportar segundos decimais (ex: "in 21.03s")
                 const match = error.message.match(/in\s+(\d+(?:\.\d+)?)s/);
@@ -291,24 +287,20 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 // Exponential backoff for next time if not forced
                 delay = Math.min(delay * 2, 10000);
             } else {
-                // If 404/403 (Configuration error), retrying won't help. Break loop.
-                // Re-throw non-retryable errors to be handled by an outer catch if desired,
-                // or provide a generic error message here.
-                console.error("❌ ERRO CRÍTICO NÃO-RETRYÁVEL NA IA:", error);
-                if (error.response) {
-                    console.error("Detalhes da Resposta:", JSON.stringify(error.response, null, 2));
-                }
+                // If 404/403 or MAX_RETRIES reached, return friendly fallback
+                console.error("❌ FALHA DEFINITIVA NA IA APÓS TENTATIVAS OU ERRO CRÍTICO.");
+                
                 return {
-                    text: "Desculpe, tive um problema técnico momentâneo (Erro: " + error.message + "). Pode repetir?",
+                    text: "Opa, meu sistema deu uma pequena engasgada aqui para buscar essa informação. Pode repetir?",
                     needsHandoff: false
                 };
             }
         }
     }
-    // This part should ideally not be reached if all paths return or throw.
-    // As a safeguard, return a generic error if the loop somehow finishes without a return.
+    
+    // Safeguard caso saia do try-catch sem return
     return {
-        text: "Desculpe, não consegui processar sua solicitação após várias tentativas. Por favor, tente novamente mais tarde.",
+        text: "Opa, meu sistema deu uma pequena engasgada aqui para buscar essa informação. Pode repetir?",
         needsHandoff: false
     };
 }
