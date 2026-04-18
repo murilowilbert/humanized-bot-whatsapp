@@ -617,7 +617,7 @@ async function setupEvents() {
                     console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
 
                     // Feature 8: Visual Verification com Gabarito (Oracle Master)
-                    if (lastMedia && lastMedia.mimeType.startsWith('image/') && stockContext && stockContext.length > 0) {
+                    if (imageParts.length > 0 && stockContext && stockContext.length > 0) {
                         console.log("[Semantic Pre-Ranking] Refinando opções da busca inicial...");
                         const refinedStock = await aiService.semanticPreRanking(searchKeywords, stockContext.slice(0, 15));
 
@@ -661,7 +661,7 @@ async function setupEvents() {
                             // Log explícito do Payload para Auditoria
                             console.log('[Oráculo Payload] Montado:', JSON.stringify(candidatesLocal.map(c => ({ code: c.code, name: c.name, hasImage: !!c.localImageBase64 })), null, 2));
 
-                            const visualConfirm = await aiService.verifyProductImageWithCatalog(lastMedia, combinedText, candidatesLocal);
+                            const visualConfirm = await aiService.verifyProductImageWithCatalog(imageParts[0].inlineData, combinedText, candidatesLocal);
 
                             if (visualConfirm) {
                                 console.log(`[Verificação Visual] Sucesso! Código do Hospedeiro: "${visualConfirm}"`);
