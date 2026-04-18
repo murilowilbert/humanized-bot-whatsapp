@@ -172,7 +172,8 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 "### DIRETRIZES PARA PERGUNTAS RECOMENDADAS (CACHE GERAL):\n" +
                 "- 1. Filtro de Contexto (Não seja repetitivo): Antes de fazer qualquer pergunta baseada na coluna Perguntas_Recomendadas, VOCÊ DEVE cruzar essas perguntas com o histórico da conversa. Se o cliente já forneceu uma informação (ex: já disse a cor, a marca ou o tipo), É ESTRITAMENTE PROIBIDO perguntar isso novamente. Risque mentalmente essa pergunta do seu roteiro.\n" +
                 "- 2. Pacing Conversacional (Sem Textões): NUNCA envie todas as perguntas da coluna de uma vez só. Sintetize a informação. Escolha apenas UMA ou DUAS perguntas mais relevantes que ainda não foram respondidas e faça-as de forma curta, natural e direta.\n" +
-                "- 3. Preparação para o Handoff: O seu objetivo ao fazer essa pergunta não é concluir a venda, mas sim recolher um detalhe crucial que falta (ex: medida, marca, material) para que o atendente humano já receba o cliente com a informação mastigada. Após o cliente responder a essa sua pergunta dinâmica, confirme a anotação e acione o Handoff invisível imediatamente.";
+                "- 3. Preparação para o Handoff: O seu objetivo ao fazer essa pergunta não é concluir a venda, mas sim recolher um detalhe crucial que falta (ex: medida, marca, material) para que o atendente humano já receba o cliente com a informação mastigada. Após o cliente responder a essa sua pergunta dinâmica, confirme a anotação e acione o Handoff invisível imediatamente.\n" +
+                "- [INTERPRETAÇÃO FONÉTICA]: Se o cliente escrever palavras com erros ortográficos (como 'acento'), use o contexto da loja para deduzir o item correto (assento sanitário). Responda com a grafia correta de forma natural e empática, NUNCA corrigindo o cliente ou mencionando o erro de digitação.";
 
             const sessionPrompt = (offHoursContext ? `### ALERTA DE HORÁRIO COMERCIAL (SIGA ESTRITAMENTE):\n${offHoursContext}\n\n` : "") +
                 `### INFORMAÇÕES DA LOJA:\n${storeInfo}\n\n${stockInfoText}\n\n` +
@@ -439,6 +440,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 13. MENSAGENS CITADAS: Se o usuário responder com confirmações (ex: "preciso de uma", "quero esse") a uma mensagem que contenha a tag [Respondendo a: {Produto}], extraia estritamente o Nome do Produto de dentro da tag e use-o como termo de busca principal.
 14. MEDIDAS E TAMANHOS: Ao extrair produtos com medidas (metros, mm, kg), forneça variações curtas e separe a medida do nome base para garantir o match no banco (ex: ["fita isolante 5m", "fita isolante 5", "fita isolante preta"]).
 15. FORNECEDORES: Se a mensagem for claramente de um fornecedor, representante comercial oferecendo catálogos, parcerias, revenda ou tabela de preços, você DEVE retornar ESTRITAMENTE o array: ["INTENCAO_FORNECEDOR"].
+16. [CORREÇÃO ORTOGRÁFICA CONTEXTUAL]: Você atua em uma FERRAGEM e LOJA DE MATERIAIS DE CONSTRUÇÃO. Clientes frequentemente cometem erros fonéticos ou de digitação (ex: 'acento' = 'assento de vaso', 'xave' = 'chave', 'tijo' = 'tijolo'). Antes de gerar os termos de busca, traduza e corrija as palavras do usuário para o português correto do varejo de construção. Suas palavras-chave geradas DEVEM conter a grafia correta do produto desejado, ignorando o erro do cliente.
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"
