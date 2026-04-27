@@ -49,8 +49,8 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             const stockInfoText = stockContext.length > 0
                 ? "### ESTOQUE ATUALIZADO (Use estes dados para recomendar):\n" + JSON.stringify(stockContext, null, 2)
                 : (isFullStockEnabled
-                    ? "### ESTOQUE: A princípio não encontramos o item exato, mas tente conduzir a conversa (sem falar 'o sistema indica que não tem', aja como humano). Aja normalmente oferecendo similares genéricos."
-                    : "### ESTOQUE: ITEM NÃO ENCONTRADO NA TABELA. Você DEVE acionar a transferência para um atendente humano imediatamente usando a regra de Handoff, não afirme que não temos.");
+                    ? "### ESTOQUE: O contexto não retornou itens específicos para essa busca. Você DEVE agir como se fosse verificar com o pessoal do balcão. NUNCA diga que 'não encontrou', 'não identificou' ou 'não temos'. Diga apenas que vai passar para um atendente verificar as opções exatas desse produto na prateleira."
+                    : "### ESTOQUE: O contexto não retornou itens. Você DEVE acionar a transferência para um atendente humano imediatamente. Diga APENAS que vai repassar para o pessoal do balcão verificar. NUNCA negue a existência do produto.");
 
             const isFirstMessage = chatHistory.length <= 1; // includes current message
 
@@ -106,9 +106,31 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             }
 
             if (isExceptionDay) {
-                storeStatusStr = "FECHADA (Feriado/Evento)";
-                holidayReason = targetException.reason;
-                nextOpenStr = targetException.returnDate;
+                if (targetException.type === 'horario_especial' && targetException.specialHours) {
+                    // Horário Especial: verifica se está dentro das horas customizadas
+                    const [openH, openM] = targetException.specialHours.open.split(':').map(Number);
+                    const [closeH, closeM] = targetException.specialHours.close.split(':').map(Number);
+                    const openTotal = openH * 60 + openM;
+                    const closeTotal = closeH * 60 + closeM;
+
+                    if (currentTotal >= openTotal && currentTotal < closeTotal) {
+                        storeStatusStr = "ABERTA (Horário Especial)";
+                        holidayReason = targetException.reason;
+                    } else {
+                        storeStatusStr = "FECHADA";
+                        holidayReason = targetException.reason;
+                        if (currentTotal < openTotal) {
+                            nextOpenStr = `hoje às ${targetException.specialHours.open} (horário especial)`;
+                        } else {
+                            nextOpenStr = "amanhã às 08:00";
+                        }
+                    }
+                } else {
+                    // Dia Fechado (tipo padrão)
+                    storeStatusStr = "FECHADA (Feriado/Evento)";
+                    holidayReason = targetException.reason;
+                    nextOpenStr = targetException.returnDate;
+                }
             } else {
                 // Lógica Rotineira Padrão (Sem Feriados)
                 // Lógica de Segunda a Sexta (Dias 1 a 5)
@@ -145,7 +167,15 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             let systemTimeContext = "";
 
             if (isExceptionDay) {
-                systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está FECHADA devido ao feriado/motivo: ${holidayReason}. Só retornaremos o atendimento em: ${nextOpenStr}. Informe isso ao cliente com naturalidade.]`;
+                if (storeStatusStr.includes('ABERTA (Horário Especial)')) {
+                    systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. Hoje é dia de ${holidayReason}, mas a loja está ABERTA em horário especial (${targetException.specialHours.open} às ${targetException.specialHours.close}). Informe o horário reduzido ao cliente com naturalidade se for relevante.]`;
+                } else if (storeStatusStr === 'FECHADA' && holidayReason) {
+                    let closedMsg = `A loja está FECHADA devido a: ${holidayReason}.`;
+                    if (nextOpenStr) closedMsg += ` Só retornaremos o atendimento em: ${nextOpenStr}.`;
+                    systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. ${closedMsg} Informe isso ao cliente com naturalidade.]`;
+                } else {
+                    systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está FECHADA devido ao feriado/motivo: ${holidayReason}. Só retornaremos o atendimento em: ${nextOpenStr}. Informe isso ao cliente com naturalidade.]`;
+                }
             } else {
                 let openingPhrase = '';
                 if (storeStatusStr === 'FECHADA') {
@@ -165,7 +195,7 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 "- PROIBIÇÃO DE RESERVA: É ESTRITAMENTE PROIBIDO usar verbos como \"separar\", \"guardar\" ou \"reservar\" na sua resposta. NUNCA ofereça para deixar um produto separado para o cliente buscar depois, nem hoje e nem no dia seguinte. Se o cliente disser que vem buscar, diga apenas \"Estaremos te esperando!\" ou \"Avisarei o balcão da sua visita\".\n" +
                 "- TEMPLATE DE FECHAMENTO (OBRIGATÓRIO): Toda vez que você apresentar um produto e o preço, o final da sua mensagem NÃO PODE ser inventado. Ele DEVE seguir estritamente esta fórmula: [Oferta de 1 item complementar rápido] + [Pergunta de encerramento padrão]. Exemplos que você é OBRIGADO a seguir: \"...sai por R$ 15,90. Já vai precisar levar a fita veda rosca junto, ou posso te ajudar com mais algum material?\" \"...custa R$ 47,00. Vai precisar das pilhas também, ou quer dar uma olhada em mais alguma coisa?\" NUNCA crie perguntas de fechamento oferecendo facilidades de reserva. Limite-se a oferecer o item extra e perguntar se precisa de mais algo.\n" +
                 "- HANDOFF OBRIGATÓRIO EM PEDIDOS DE RESERVA: Se o cliente solicitar explicitamente que um item seja separado, reservado ou guardado (ex: 'separa pra mim', 'deixa guardado que passo aí', 'reserva um'), VOCÊ NÃO PODE CONFIRMAR A RESERVA. Você DEVE informar educadamente que essa verificação é feita pelo balcão e acionar o Handoff (transbordo) para um atendente humano imediatamente. Exemplo de resposta obrigatória: 'Sobre deixar separado, vou passar para um atendente aqui do balcão confirmar se conseguimos reservar para você, só um instante.'\n" +
-                "- PROIBIÇÃO DE NEGATIVA GERAL: Se o cliente buscar por uma marca, variação ou especificação de um produto e a busca retornar vazia, NUNCA diga que \"não encontrou o produto\", \"não temos\" ou \"não achei listado\". Em vez de negar o estoque, faça um Handoff natural e invisível focando em ajudar. Diga apenas: \"Vou chamar um de nossos atendentes para verificar as opções exatas da [Marca/Modelo] que temos na prateleira para você, só um instante!\"\n" +
+                "- PROIBIÇÃO DE NEGATIVA GERAL: Se o cliente buscar por uma marca, variação ou especificação de um produto e a busca retornar vazia, NUNCA diga que \"não encontrou\", \"não identificou\", \"não temos\", \"não achei listado\" ou \"não consegui identificar\". Em vez de negar o estoque, faça um Handoff natural e invisível focando em ajudar. Diga apenas: \"Vou passar para um atendente verificar essa questão desse produto pra você, só um instante!\" Se o cliente pedir outro produto enquanto o anterior está pendente, atenda normalmente e lembre que o anterior já está sendo verificado.\n" +
                 "- IDENTIDADE E PERSONA: Você é estritamente proibido de revelar que é uma inteligência artificial, bot ou assistente virtual. Aja 100% como um atendente humano real do balcão da loja física. Além disso, NUNCA diga que o seu nome é \"Marlene\" (este é o nome do estabelecimento). Quando precisar se apresentar ou saudar, diga apenas: \"Olá! Bem-vindo à Ferragem Marlene, como posso te ajudar hoje?\"\n" +
                 "- LIMPEZA DE TEXTO: NUNCA inicie frases, parágrafos ou listas com asteriscos (*) ou hifens (-). Se precisar listar produtos, use quebras de linha simples ou um emoji discreto (como 🔹 ou 👉). O uso do asterisco é permitido APENAS se for fechar uma palavra para negrito no WhatsApp (ex: *palavra*), nunca solto.\n" +
                 "- TRANSIÇÃO DE ESTADO (TRIAGEM -> VENDA): Se você estiver fazendo perguntas de triagem de uma Categoria Geral e a resposta do usuário permitir que você identifique um produto EXATO que está presente no seu Contexto de Estoque (ex: usuário quer fio para chuveiro, e você tem o 'Fio 6mm' no seu estoque), ABORTE O HANDOFF IMEDIATAMENTE. Mude para a postura de vendedor, confirme a utilidade (\"Para chuveiro o ideal é o 6mm...\") e ofereça o produto específico do estoque com o respectivo preço, convidando para a compra.\n" +

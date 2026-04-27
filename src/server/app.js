@@ -9,6 +9,7 @@ const basicAuth = require('express-basic-auth');
 
 const metricsService = require('../services/metricsService');
 const settings = require('../config/settings');
+const googleSheetsService = require('../services/googleSheetsService');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,6 +21,7 @@ const PORT = process.env.PORT || 3000;
 let botEnabled = true;
 let testMode = true;
 let fullStockEnabled = false;
+const handoffQueue = []; // In-memory handoff queue
 const ALLOWED_NUMBERS = ['555199106294', '189524122574884', '555196870986', '555199078225', '224704216436825']; // User's numbers
 
 app.use(cors());
@@ -131,14 +133,6 @@ app.post('/api/restart', async (req, res) => {
     }
 });
 
-// Socket Connection
-io.on('connection', (socket) => {
-    console.log('Cliente Web conectado (Refresh)');
-    const bot = require('../bot');
-    const initialized = bot.isInitialized ? bot.isInitialized() : false;
-    // Send current status immediately
-    socket.emit('status', { enabled: botEnabled, testMode: testMode, initialized: initialized });
-});
 
 // Get Metrics
 app.get('/api/metrics', (req, res) => {
@@ -146,25 +140,31 @@ app.get('/api/metrics', (req, res) => {
     res.json(metrics);
 });
 
-// Get Holidays
+// Get Store Exceptions (Dias Fechados, Horários Especiais)
 app.get('/api/holidays', (req, res) => {
     try {
-        const file = path.join(__dirname, '../../data/holidays.json');
-        const data = JSON.parse(fs.readFileSync(file));
+        const file = path.join(__dirname, '../../data/store_exceptions.json');
+        if (!fs.existsSync(file)) {
+            fs.writeFileSync(file, '[]');
+        }
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
         res.json(data);
     } catch (e) {
-        res.status(500).json({ error: "Erro ao ler feriados" });
+        console.error("Erro ao ler store_exceptions.json:", e);
+        res.status(500).json({ error: "Erro ao ler exceções da loja" });
     }
 });
 
-// Update Holidays
+// Update Store Exceptions
 app.post('/api/holidays', (req, res) => {
     try {
-        const file = path.join(__dirname, '../../data/holidays.json');
-        fs.writeFileSync(file, JSON.stringify(req.body, null, 2));
+        const file = path.join(__dirname, '../../data/store_exceptions.json');
+        const data = Array.isArray(req.body) ? req.body : [];
+        fs.writeFileSync(file, JSON.stringify(data, null, 2));
         res.json({ success: true });
     } catch (e) {
-        res.status(500).json({ error: "Erro ao salvar feriados" });
+        console.error("Erro ao salvar store_exceptions.json:", e);
+        res.status(500).json({ error: "Erro ao salvar exceções da loja" });
     }
 });
 
@@ -187,6 +187,53 @@ app.get('/api/ranking', async (req, res) => {
         res.status(500).json({ error: "Erro interno ao buscar ranking" });
     }
 });
+
+// Force Sync Sheets
+app.post('/api/force-sync', async (req, res) => {
+    try {
+        console.log("[Dashboard] Forçando sincronização das planilhas...");
+        const result = await googleSheetsService.forceRefreshCache();
+        io.emit('log', `Sync manual: ${result.principal} itens (principal) + ${result.categoria} categorias recarregados.`);
+        res.json({ success: true, ...result });
+    } catch (e) {
+        console.error("Erro ao forçar sync:", e);
+        res.status(500).json({ error: "Erro ao sincronizar planilhas" });
+    }
+});
+
+// Get Handoff Queue
+app.get('/api/handoffs', (req, res) => {
+    res.json(handoffQueue);
+});
+
+// Resolve Handoff (remove from queue)
+app.post('/api/handoffs/resolve', (req, res) => {
+    const { id } = req.body;
+    const idx = handoffQueue.findIndex(h => h.id === id);
+    if (idx !== -1) {
+        handoffQueue.splice(idx, 1);
+        io.emit('handoff_update', handoffQueue);
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ error: "Handoff não encontrado" });
+    }
+});
+
+// Add Handoff (called by bot.js)
+function addHandoff(data) {
+    const entry = {
+        id: Date.now().toString(),
+        phone: data.phone || 'Desconhecido',
+        reason: data.reason || 'Handoff',
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }),
+        timestamp: Date.now()
+    };
+    handoffQueue.push(entry);
+    // Keep only last 20
+    if (handoffQueue.length > 20) handoffQueue.shift();
+    io.emit('handoff_update', handoffQueue);
+    return entry;
+}
 
 // Start Server
 function startServer() {
@@ -217,5 +264,6 @@ module.exports = {
     isTestMode,
     isFullStockEnabled,
     getAllowedNumbers,
-    emitEvent
+    emitEvent,
+    addHandoff
 };

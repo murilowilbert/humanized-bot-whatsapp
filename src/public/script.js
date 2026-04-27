@@ -210,6 +210,39 @@ window.restartSystem = async function () {
     location.reload();
 }
 
+window.forceSync = async function () {
+    const btn = document.getElementById('sync-btn');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader" class="w-5 h-5 spin-2d"></i>';
+    lucide.createIcons();
+
+    try {
+        const res = await fetch(`${API_URL}/force-sync`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            btn.innerHTML = '<i data-lucide="check" class="w-5 h-5 text-success"></i>';
+            lucide.createIcons();
+            setTimeout(() => {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+                lucide.createIcons();
+            }, 2000);
+        } else {
+            throw new Error('Sync failed');
+        }
+    } catch (e) {
+        console.error('Erro no force-sync:', e);
+        btn.innerHTML = '<i data-lucide="x" class="w-5 h-5 text-danger"></i>';
+        lucide.createIcons();
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+            lucide.createIcons();
+        }, 2000);
+    }
+}
+
 async function loadMetrics() {
     try {
         const res = await fetch(`${API_URL}/metrics`);
@@ -234,9 +267,6 @@ async function loadMetrics() {
         // Fetch missed demand
         await loadMissedDemand();
 
-        // Render mock top products for Zone 3 until we build a metrics endpoint for it
-        renderMockTopProducts();
-
     } catch (e) {
         console.error("Metrics load err:", e);
     }
@@ -244,7 +274,7 @@ async function loadMetrics() {
 
 async function loadMissedDemand() {
     try {
-        const res = await fetch(`${API_URL}/demand`);
+        const res = await fetch(`${API_URL}/ranking`);
         const data = await res.json();
 
         const list = document.getElementById('missed-demand-list');
@@ -266,39 +296,118 @@ async function loadMissedDemand() {
     } catch (e) {
         // Fallback
         const list = document.getElementById('missed-demand-list');
-        list.innerHTML = '<div class="text-danger text-center pt-8">Falha ao carregar API.</div>';
+        list.innerHTML = '<div class="text-text-muted text-center pt-8">Sem dados disponíveis.</div>';
     }
 }
 
-function renderMockTopProducts() {
-    const list = document.getElementById('top-products-list');
-    const products = [
-        { name: 'Ducha Zagonel Optima', pct: 85 },
-        { name: 'Fita Veda Rosca', pct: 60 },
-        { name: 'Disjuntor Siemens', pct: 45 },
-        { name: 'Parafuso Philips', pct: 30 }
-    ];
+async function loadTopProducts() {
+    try {
+        const res = await fetch(`${API_URL}/ranking`);
+        const data = await res.json();
+        const list = document.getElementById('top-products-list');
 
-    list.innerHTML = products.map((p, i) => {
-        // Delay animation for a cascade effect
-        setTimeout(() => {
-            const bar = document.getElementById(`bar-${i}`);
-            if (bar) bar.style.width = `${p.pct}%`;
-        }, 300 + (i * 150));
+        if (!data || data.length === 0) {
+            list.innerHTML = '<div class="text-xs text-text-muted text-center py-4">Sem dados de busca ainda.</div>';
+            return;
+        }
 
+        // Take top 5 and calculate percentage relative to max
+        const top5 = data.slice(0, 5);
+        const maxCount = top5[0].searchCount || 1;
+
+        list.innerHTML = top5.map((p, i) => {
+            const pct = Math.round((p.searchCount / maxCount) * 100);
+
+            setTimeout(() => {
+                const bar = document.getElementById(`bar-${i}`);
+                if (bar) bar.style.width = `${pct}%`;
+            }, 300 + (i * 150));
+
+            return `
+            <div>
+                <div class="flex justify-between text-[10px] mb-1 font-semibold text-text-muted">
+                    <span class="truncate mr-2">${p.productName}</span>
+                    <span class="whitespace-nowrap">${p.searchCount}x</span>
+                </div>
+                <div class="neo-progress-bar">
+                    <div id="bar-${i}" class="neo-progress-fill" style="width: 0%"></div>
+                </div>
+            </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('Erro ao carregar top products:', e);
+        const list = document.getElementById('top-products-list');
+        list.innerHTML = '<div class="text-xs text-text-muted text-center py-4">Falha ao carregar dados.</div>';
+    }
+}
+
+// Handoff Queue
+function renderHandoffQueue(queue) {
+    const list = document.getElementById('handoff-queue-list');
+    const badge = document.getElementById('handoff-badge');
+
+    if (!list) return;
+
+    if (!queue || queue.length === 0) {
+        list.innerHTML = '<div class="text-xs text-text-muted text-center py-4">Nenhum transbordo pendente.</div>';
+        if (badge) {
+            badge.textContent = '0 Aguardando';
+            badge.classList.remove('animate-pulse');
+        }
+        lucide.createIcons();
+        return;
+    }
+
+    if (badge) {
+        badge.textContent = `${queue.length} Aguardando`;
+        badge.classList.add('animate-pulse');
+    }
+
+    list.innerHTML = queue.map(h => {
+        const phoneLast4 = h.phone.slice(-4);
         return `
-        <div>
-            <div class="flex justify-between text-[10px] mb-1 font-semibold text-text-muted">
-                <span>${p.name}</span>
-                <span>${p.pct}%</span>
+        <div class="neo-inset p-3 bg-red-500/5 dark:bg-red-500/10 border-l-2 border-danger">
+            <div class="flex justify-between items-center mb-2">
+                <span class="font-bold text-sm">...${phoneLast4} <span class="text-[10px] font-normal text-text-muted">(${h.time})</span></span>
+                <span class="text-[10px] font-bold text-danger uppercase opacity-80 border border-danger/50 px-1 rounded truncate max-w-[120px]">${h.reason}</span>
             </div>
-            <div class="neo-progress-bar">
-                <div id="bar-${i}" class="neo-progress-fill" style="width: 0%"></div>
-            </div>
+            <button class="neo-btn w-full text-xs py-2 text-text-main hover:text-success transition-colors" onclick="resolveHandoff('${h.id}')">
+                <i data-lucide="user-check" class="w-4 h-4"></i> Assumir Atendimento
+            </button>
         </div>
         `;
     }).join('');
+
+    lucide.createIcons();
 }
+
+async function loadHandoffQueue() {
+    try {
+        const res = await fetch(`${API_URL}/handoffs`);
+        const data = await res.json();
+        renderHandoffQueue(data);
+    } catch (e) {
+        console.error('Erro ao carregar handoff queue:', e);
+    }
+}
+
+window.resolveHandoff = async function (id) {
+    try {
+        await fetch(`${API_URL}/handoffs/resolve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+    } catch (e) {
+        console.error('Erro ao resolver handoff:', e);
+    }
+}
+
+// Real-time handoff updates via socket
+socket.on('handoff_update', (queue) => {
+    renderHandoffQueue(queue);
+});
 
 
 function renderChart(ratings) {
@@ -351,44 +460,142 @@ function renderChart(ratings) {
     });
 }
 
-// Holidays
-async function loadHolidays() {
-    const res = await fetch(`${API_URL}/holidays`);
-    const data = await res.json();
-    const list = document.getElementById('holiday-list');
-    list.innerHTML = '';
-    data.dates.forEach(date => {
-        const [y, m, d] = date.split('-');
-        const li = document.createElement('li');
-        li.className = "flex justify-between items-center border-b border-glass-border pb-1";
-        li.innerHTML = `<span><i data-lucide="calendar" class="inline w-3 h-3"></i> ${d}/${m}/${y}</span> <button class="text-danger hover:text-red-400" onclick="removeHoliday('${date}')"><i data-lucide="trash-2" class="w-3 h-3"></i></button>`;
-        list.appendChild(li);
-    });
-    lucide.createIcons();
-}
-
-window.addHoliday = async function () {
-    const date = document.getElementById('holiday-input').value;
-    if (!date) return;
-    const res = await fetch(`${API_URL}/holidays`);
-    const data = await res.json();
-    if (!data.dates.includes(date)) {
-        data.dates.push(date);
-        await fetch(`${API_URL}/holidays`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-        loadHolidays();
+// Store Exceptions (Calendário da Loja)
+window.toggleSpecialHoursFields = function () {
+    const selectedType = document.querySelector('input[name="exception-type"]:checked')?.value;
+    const specialFields = document.getElementById('special-hours-fields');
+    if (selectedType === 'horario_especial') {
+        specialFields.classList.remove('hidden');
+    } else {
+        specialFields.classList.add('hidden');
     }
 }
 
-window.removeHoliday = async function (date) {
-    const res = await fetch(`${API_URL}/holidays`);
-    const data = await res.json();
-    data.dates = data.dates.filter(d => d !== date);
-    await fetch(`${API_URL}/holidays`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-    loadHolidays();
+async function loadExceptions() {
+    try {
+        const res = await fetch(`${API_URL}/holidays`);
+        const data = await res.json();
+        const list = document.getElementById('exception-list');
+
+        if (!Array.isArray(data) || data.length === 0) {
+            list.innerHTML = '<div class="text-text-muted text-center py-2">Nenhuma exceção cadastrada.</div>';
+            lucide.createIcons();
+            return;
+        }
+
+        // Sort by date ascending
+        data.sort((a, b) => a.date.localeCompare(b.date));
+
+        list.innerHTML = data.map(ex => {
+            const [y, m, d] = ex.date.split('-');
+            const typeIcon = ex.type === 'horario_especial' ? '🕐' : '🔴';
+            const reasonText = ex.reason || 'Sem motivo';
+
+            let detailText = '';
+            if (ex.type === 'horario_especial' && ex.specialHours) {
+                detailText = `<span class="text-warning">${ex.specialHours.open} - ${ex.specialHours.close}</span>`;
+            } else {
+                detailText = `<span class="text-danger">Fechado</span>`;
+            }
+
+            return `<li class="flex justify-between items-center border-b border-glass-border pb-1">
+                <div class="flex flex-col gap-0.5 min-w-0 flex-1 mr-2">
+                    <span class="font-semibold truncate">${typeIcon} ${d}/${m}/${y} — ${reasonText}</span>
+                    <span class="text-[10px]">${detailText}</span>
+                </div>
+                <button class="text-danger hover:text-red-400 flex-shrink-0" onclick="removeException('${ex.date}')"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+            </li>`;
+        }).join('');
+
+        lucide.createIcons();
+    } catch (e) {
+        console.error("Erro ao carregar exceções:", e);
+        const list = document.getElementById('exception-list');
+        list.innerHTML = '<div class="text-danger text-center py-2">Falha ao carregar.</div>';
+    }
+}
+
+window.addException = async function () {
+    const date = document.getElementById('exception-date-input').value;
+    const reason = document.getElementById('exception-reason-input').value.trim();
+    const type = document.querySelector('input[name="exception-type"]:checked')?.value || 'fechado';
+
+    if (!date) return alert('Selecione uma data.');
+    if (!reason) return alert('Informe o motivo.');
+
+    // Build the exception object
+    const newException = { date, type, reason };
+
+    if (type === 'horario_especial') {
+        const openTime = document.getElementById('exception-open-input').value;
+        const closeTime = document.getElementById('exception-close-input').value;
+        if (!openTime || !closeTime) return alert('Preencha os horários.');
+        newException.specialHours = { open: openTime, close: closeTime };
+    } else {
+        // Auto-calculate returnDate based on the next business day
+        const exDate = new Date(date + 'T12:00:00');
+        const nextDay = new Date(exDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        // Skip Sunday (0)
+        while (nextDay.getDay() === 0) {
+            nextDay.setDate(nextDay.getDate() + 1);
+        }
+        const dayNames = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+        newException.returnDate = `${dayNames[nextDay.getDay()]} às 08:00`;
+    }
+
+    // Fetch current, add, and save
+    try {
+        const res = await fetch(`${API_URL}/holidays`);
+        const data = await res.json();
+        const existing = Array.isArray(data) ? data : [];
+
+        // Prevent duplicate dates
+        if (existing.some(ex => ex.date === date)) {
+            return alert('Já existe uma exceção para essa data.');
+        }
+
+        existing.push(newException);
+        await fetch(`${API_URL}/holidays`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(existing)
+        });
+
+        // Clear form
+        document.getElementById('exception-date-input').value = '';
+        document.getElementById('exception-reason-input').value = '';
+        document.querySelector('input[name="exception-type"][value="fechado"]').checked = true;
+        document.getElementById('special-hours-fields').classList.add('hidden');
+
+        loadExceptions();
+    } catch (e) {
+        console.error("Erro ao adicionar exceção:", e);
+        alert('Erro ao salvar. Tente novamente.');
+    }
+}
+
+window.removeException = async function (date) {
+    try {
+        const res = await fetch(`${API_URL}/holidays`);
+        const data = await res.json();
+        const filtered = Array.isArray(data) ? data.filter(ex => ex.date !== date) : [];
+        await fetch(`${API_URL}/holidays`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(filtered)
+        });
+        loadExceptions();
+    } catch (e) {
+        console.error("Erro ao remover exceção:", e);
+    }
 }
 
 
 // Boot
 loadMetrics();
-loadHolidays();
+loadExceptions();
+loadTopProducts();
+loadHandoffQueue();
 setInterval(loadMetrics, 60000); // 1-minute ticker
+setInterval(loadHandoffQueue, 30000); // 30-second handoff refresh

@@ -57,9 +57,13 @@ function normalizeJid(jid) {
 
 function isHoliday() {
     try {
-        const holidays = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/holidays.json'))).dates;
+        const exceptionsPath = path.join(__dirname, '../data/store_exceptions.json');
+        if (!fs.existsSync(exceptionsPath)) return false;
+        const exceptions = JSON.parse(fs.readFileSync(exceptionsPath, 'utf8'));
         const today = getBrazilDateString();
-        return holidays.includes(today);
+        const todayException = exceptions.find(ex => ex.date === today);
+        // Considera feriado se a exceção for do tipo 'fechado' (ou sem tipo definido, para compatibilidade)
+        return todayException && (!todayException.type || todayException.type === 'fechado');
     } catch (e) {
         return false;
     }
@@ -406,6 +410,7 @@ async function setupEvents() {
 
             userPausedStates.set(jid, Date.now());
             metricsService.incrementHandoff();
+            if (server.addHandoff) server.addHandoff({ phone: headers, reason: "Análise de Documento" });
             return; // Aborta fluxo e impede travamento no LLM
         }
 
@@ -532,7 +537,7 @@ async function setupEvents() {
 
                 let dailyGreetingContext = "";
                 if (!hasStoreRepliedToday) {
-                    dailyGreetingContext = "[CONTEXTO: Esta é a primeira interação do dia. Inicie com uma saudação educada (Bom dia/Boa tarde/Boa noite) conforme o relógio do sistema e ofereça ajuda.]";
+                    dailyGreetingContext = "[CONTEXTO: Esta é a primeira interação do dia. Inicie com UMA ÚNICA saudação curta (Bom dia/Boa tarde/Boa noite) conforme o relógio do sistema e ofereça ajuda, tudo em UMA SÓ FRASE. É ESTRITAMENTE PROIBIDO criar dois parágrafos de saudação ou cumprimentar duas vezes na mesma resposta.]";
                 } else {
                     dailyGreetingContext = "[CONTEXTO: O atendimento de hoje já iniciou. PROIBIDO repetir saudações iniciais. Continue a conversa de onde parou de forma direta e prestativa.]";
                 }
@@ -750,6 +755,7 @@ async function setupEvents() {
 
                     userPausedStates.set(jid, getBrazilDateString());
                     metricsService.incrementHandoff();
+                    if (server.addHandoff) server.addHandoff({ phone: headers, reason: "Falha/Timeout API" });
 
                     if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
                     return; // Aborta fluxo normal
@@ -864,6 +870,7 @@ async function setupEvents() {
                     }
                     userPausedStates.set(jid, getBrazilDateString());
                     metricsService.incrementHandoff();
+                    if (server.addHandoff) server.addHandoff({ phone: headers, reason: "Transbordo AI" });
                     return; // Encerra o fluxo aqui para não iniciar timer de inatividade
                 }
 
