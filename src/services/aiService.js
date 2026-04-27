@@ -144,7 +144,7 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                     } else {
                         nextOpenStr = currentDayOfWeekly === 5 ? "amanhã (sábado) às 08:00" : "amanhã às 08:00";
                     }
-                } 
+                }
                 // Lógica de Sábado (Dia 6)
                 else if (currentDayOfWeekly === 6) {
                     if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 840 && currentTotal < 1050)) {
@@ -156,7 +156,7 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                     } else {
                         nextOpenStr = "segunda-feira às 08:00";
                     }
-                } 
+                }
                 // Lógica de Domingo (Dia 0)
                 else {
                     nextOpenStr = "segunda-feira às 08:00";
@@ -188,7 +188,7 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 "- REGRA ANTI-LOOP (ABSOLUTA): Verifique o histórico de mensagens. Se VOCÊ acabou de fazer uma pergunta de afunilamento na mensagem anterior e o USUÁRIO acabou de RESPONDER a essa preferência, VOCÊ É ESTRITAMENTE PROIBIDO de fazer uma nova pergunta genérica. Você DEVE cruzar a resposta do usuário com os [ESTOQUE ATUALIZADO], selecionar as 2 ou 3 opções que melhor atendem ao pedido, informar os preços diretamente e explicar brevemente a diferença entre elas.\n" +
                 "- FOTOS DO CLIENTE: O sistema já leu a imagem e injetou os possíveis produtos no estoque. AJA NATURALMENTE. NUNCA use frases robóticas como 'Com base na foto', 'Analisando a imagem', 'O sistema identificou', etc. Apenas assuma que você viu a foto e vá direto ao ponto (ex: 'Sim, nós temos a Ducha Ducali por...').\n" +
                 "- DIRETRIZ DE SEGURANÇA MÁXIMA (ZERO ALUCINAÇÃO): Se o [Contexto de Produtos] estiver VAZIO (0 itens), VOCÊ ESTÁ ESTRITAMENTE PROIBIDO de mencionar qualquer marca, modelo ou preço de produto. VOCÊ NÃO PODE USAR SEU CONHECIMENTO PRÉVIO DA INTERNET. Se não estiver no contexto, VOCÊ NÃO VENDE. Nesse caso de contexto vazio, você DEVE APENAS informar que vai verificar a disponibilidade física na prateleira e acionar um humano, SEM NUNCA listar produtos imaginários.\n" +
-                "- TELE-ENTREGA: Quando alguém perguntar de tele-entrega, responda EXATAMENTE: 'Infelizmente ainda não possuímos tele-entrega 😕' (ou use outro emoji similar).\n" +
+                "- TELE-ENTREGA: Quando alguém perguntar de tele-entrega, responda EXEMPLO: 'Infelizmente ainda não possuímos tele-entrega 😕' (ou use outro emoji similar).\n" +
                 "- LOCALIZAÇÃO: Se pedir endereço, envie o endereço amigavelmente e obrigatoriamente inclua a tag exata no final da resposta: [ACTION: SEND_LOCATION] (pois o sistema interceptará essa tag para enviar o mapa do GPS). Exemplo: 'Nossa loja fica na Rua Osvaldo Cruz, 417, Centro, Igrejinha, pertinho da Rua Coberta! [ACTION: SEND_LOCATION]'\n" +
                 "- CONCISÃO E AFUNILAMENTO (ANTI-TEXTÃO): Se a busca retornar mais de 3 variações do mesmo produto (ex: conectores de vários fios, parafusos de vários tamanhos), VOCÊ É PROIBIDO de listar todas as opções e preços. Em vez disso, diga brevemente que temos o produto e faça APENAS UMA pergunta de afunilamento para descobrir a necessidade exata (ex: \"Para quantos fios você precisa?\"). Mantenha as respostas curtas e humanas.\n" +
                 "- HANDOFF INVISÍVEL: É ESTRITAMENTE PROIBIDO mencionar termos como \"banco de dados\", \"sistema\", \"planilha\" ou \"não fui programado\". Quando precisar repassar o atendimento para um humano por não encontrar a peça, aja de forma natural e invisível. Diga apenas algo como: \"Vou confirmar com o pessoal do balcão se temos essa medida específica, só um instante.\" ou \"Vou passar para um atendente verificar isso certinho para você.\"\n" +
@@ -319,7 +319,7 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             } else {
                 // If 404/403 or MAX_RETRIES reached, return friendly fallback
                 console.error("❌ FALHA DEFINITIVA NA IA APÓS TENTATIVAS OU ERRO CRÍTICO.");
-                
+
                 return {
                     text: "Opa, meu sistema deu uma pequena engasgada aqui para buscar essa informação. Pode repetir?",
                     needsHandoff: false
@@ -327,7 +327,7 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             }
         }
     }
-    
+
     // Safeguard caso saia do try-catch sem return
     return {
         text: "Opa, meu sistema deu uma pequena engasgada aqui para buscar essa informação. Pode repetir?",

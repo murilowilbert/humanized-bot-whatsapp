@@ -769,11 +769,8 @@ async function setupEvents() {
                 if (userMessageQueues.has(jid)) {
                     console.log(`[Debounce - Abortando Reação] Cliente enviou mensagem enquanto a IA gerava a resposta. Cancelando envio e re-escalonando fila consolidada.`);
 
-                    // Coloca todo o texto que tentamos responder de volta no início da fila pra garantir contexto
-                    userMessageQueues.get(jid).unshift({
-                        text: combinedText,
-                        media: lastMedia
-                    });
+                    // Coloca de volta na fila original (junto com a mensagem nova) os itens que processamos
+                    userMessageQueues.get(jid).unshift(...queue);
 
                     // Aborta! O botNão escreve no banco, não manda pro WhatsApp.
                     return;
