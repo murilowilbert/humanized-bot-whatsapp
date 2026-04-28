@@ -511,11 +511,6 @@ async function setupEvents() {
                 // Clear the queue for this user
                 userMessageQueues.delete(jid);
 
-                // DB History: Salvar a mensagem "juntada" do usuário
-                await prisma.chatHistory.create({
-                    data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
-                });
-
                 // Buscar ultimas mensagens do DB (Limite de 20 para IA)
                 const historyRecords = await prisma.chatHistory.findMany({
                     where: { phoneNumber: headers },
@@ -577,7 +572,7 @@ async function setupEvents() {
                 let stockContext = [];
                 let finalVisualKeyword = null;
 
-                expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
+                let expandedQueryArray = await aiService.expandSearchQuery(searchKeywords, recentHistory);
 
                 // --- SHIELD ANTI-FORNECEDOR ---
                 if (expandedQueryArray && expandedQueryArray.includes("INTENCAO_FORNECEDOR")) {
