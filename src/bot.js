@@ -554,6 +554,11 @@ async function setupEvents() {
                 // Otimização de Janela de Contexto (Rolling Window)
                 // Limita a 12 interações parciais para não estourar o limite de tokens do LLM.
                 let chatsHistory = recentRecords.map(r => ({ role: r.role, content: r.content }));
+                
+                // Injeta a mensagem ATUAL do usuário no histórico em memória
+                // (ela só será salva no DB após processamento bem-sucedido, mais abaixo)
+                chatsHistory.push({ role: 'user', content: combinedText.trim() });
+                
                 while (chatsHistory.length > 12) {
                     chatsHistory.shift();
                 }
