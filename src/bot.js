@@ -940,6 +940,13 @@ async function setupEvents() {
                 } catch (e) { /* ignore fallback fail */ }
             } finally {
                 userIsProcessing.delete(jid); // Destrava!
+                
+                // Recovery: Se ainda houver mensagens na fila (re-empilhadas pelo pós-debounce abort),
+                // reagenda o processamento para não deixar a fila órfã.
+                if (userMessageQueues.has(jid) && userMessageQueues.get(jid).length > 0 && !userProcessingTimers.has(jid)) {
+                    console.log(`[Debounce Recovery] Fila remanescente detectada para ${jid} (${userMessageQueues.get(jid).length} msgs). Re-agendando processamento.`);
+                    userProcessingTimers.set(jid, setTimeout(processQueue, 1500));
+                }
             }
         }; // Fim da func processQueue
 
