@@ -181,7 +181,37 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 if (storeStatusStr === 'FECHADA') {
                     openingPhrase = ' Só abriremos ' + nextOpenStr + '.';
                 }
-                systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. A loja está atualmente ${storeStatusStr}.${openingPhrase} Use APENAS esta informação como relógio oficial.]`;
+                systemTimeContext = `[SISTEMA: Hoje é ${currentDayStr}, ${currentTimeStr}. Data de hoje: ${currentDateIso}. A loja está atualmente ${storeStatusStr}.${openingPhrase} Use APENAS esta informação como relógio oficial.]`;
+            }
+
+            // Injetar CALENDÁRIO DE EXCEÇÕES FUTURAS para a IA saber sobre feriados/datas especiais
+            try {
+                const exceptionsPath2 = path.join(__dirname, '../../data/store_exceptions.json');
+                if (fs.existsSync(exceptionsPath2)) {
+                    const allExceptions = JSON.parse(fs.readFileSync(exceptionsPath2, 'utf8'));
+                    const todayMs = new Date(currentDateIso).getTime();
+                    const futureLimit = todayMs + (60 * 24 * 60 * 60 * 1000); // Próximos 60 dias
+                    
+                    const upcomingExceptions = allExceptions.filter(ex => {
+                        const exMs = new Date(ex.date).getTime();
+                        return exMs >= todayMs && exMs <= futureLimit;
+                    });
+
+                    if (upcomingExceptions.length > 0) {
+                        const exList = upcomingExceptions.map(ex => {
+                            const exDate = new Date(ex.date + 'T12:00:00');
+                            const dayName = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(exDate);
+                            const tipo = ex.type === 'horario_especial' 
+                                ? `Horário Especial (${ex.specialHours?.open || '?'} às ${ex.specialHours?.close || '?'})` 
+                                : 'FECHADA';
+                            return `- ${dayName} (${ex.date}): ${ex.reason} → ${tipo}${ex.returnDate ? `. Retorno: ${ex.returnDate}` : ''}`;
+                        }).join('\n');
+                        
+                        systemTimeContext += `\n[CALENDÁRIO DE EXCEÇÕES - DATAS ESPECIAIS PRÓXIMAS (CONSULTE OBRIGATORIAMENTE se o cliente perguntar sobre dias futuros)]:\n${exList}`;
+                    }
+                }
+            } catch (calErr) {
+                console.error("[Calendário Futuro] Erro ao injetar exceções futuras:", calErr);
             }
 
             const specificRules = "### REGRAS ESPECIAIS:\n" +
