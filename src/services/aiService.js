@@ -484,13 +484,17 @@ Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
             cleanJson = arrayMatch[0];
         }
         cleanJson = cleanJson.replace(/[\r\n\t]/g, ''); // Sanitização agressiva para manter formato válido
+        cleanJson = cleanJson.replace(/[\u201C\u201D]/g, '"'); // Smart quotes → aspas normais
+        cleanJson = cleanJson.replace(/[\u2018\u2019]/g, "'"); // Smart single quotes
         // Try-Catch Silencioso para Proteção do Motor (Anti-Array corrompido)
         let keywordsArray = [];
         try {
             keywordsArray = JSON.parse(cleanJson);
         } catch (parseError) {
-            console.log(`[AI Keyword] JSON parse falhou silenciosamente para a string: "${rawResponse}". Assumindo busca limpa [].`);
-            keywordsArray = []; // Fallback silencioso sem travar o cano principal
+            console.log(`[AI Keyword] JSON parse falhou para: "${cleanJson.substring(0, 200)}". Usando mensagem bruta como fallback.`);
+            // Fallback: usa a mensagem original do usuário como termo de busca
+            // ao invés de [] (que seria interpretado como "sem intenção de produto")
+            keywordsArray = sanitizedMessage.trim().length > 2 ? [sanitizedMessage.trim().substring(0, 80)] : [];
         }
 
         const lowerMsg = sanitizedMessage.toLowerCase();
