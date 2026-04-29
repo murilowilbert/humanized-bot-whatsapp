@@ -525,12 +525,13 @@ async function setupEvents() {
                 // Clear the queue for this user
                 userMessageQueues.delete(jid);
 
-                // Buscar ultimas mensagens do DB (Limite de 20 para IA)
+                // Buscar ultimas mensagens do DB (30 mais recentes, ordem cronológica)
                 const historyRecords = await prisma.chatHistory.findMany({
                     where: { phoneNumber: headers },
-                    orderBy: { createdAt: 'asc' },
-                    take: 20
+                    orderBy: { createdAt: 'desc' },
+                    take: 30
                 });
+                historyRecords.reverse(); // Volta para ordem cronológica (mais antigo → mais recente)
 
                 // Amnésia de 36 horas (Time-To-Live)
                 const ttlLimit = Date.now() - (36 * 60 * 60 * 1000);
@@ -559,7 +560,7 @@ async function setupEvents() {
                 // (ela só será salva no DB após processamento bem-sucedido, mais abaixo)
                 chatsHistory.push({ role: 'user', content: combinedText.trim() });
                 
-                while (chatsHistory.length > 12) {
+                while (chatsHistory.length > 20) {
                     chatsHistory.shift();
                 }
 
@@ -575,7 +576,7 @@ async function setupEvents() {
                 let recentHistory = [];
 
                 if (recentRecords.length > 0) {
-                    recentHistory = recentRecords.slice(-6).map(r => ({ role: r.role, content: r.content }));
+                    recentHistory = recentRecords.slice(-10).map(r => ({ role: r.role, content: r.content }));
                 }
 
                 if (imageParts.length > 0) {
