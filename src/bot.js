@@ -223,10 +223,24 @@ async function setupEvents() {
         
         // --- 24h COOLDOWN SYSTEM (HUMAN TAKEOVER) ---
         if (msg.key.fromMe) {
-            // Se a loja enviou mensagem (intervenção humana), muta o usuário por 24h
-            const expireTime = Date.now() + 86400000; // 24 horas em ms
-            mutedUsers.set(rawJid, expireTime);
-            console.log(`[Human Takeover] Intervenção detectada em ${rawJid}. Bot mutado por 24 horas.`);
+            // Ignora mensagens geradas pelo próprio bot (sock.sendMessage)
+            // Apenas intervenção humana real (digitada no celular/web) deve mutar
+            const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+            const botFingerprints = [
+                'Há algo mais em que eu possa te ajudar?',
+                'engasgada', 'instabilidade', '♻️ Sessão reiniciada',
+                '✅ Bot reativado', '🔄 Baixando dados', '⚠️ [Modo Teste]',
+                'Vou repassar', 'pessoal do balcão', '{{COD:'
+            ];
+            const isBotGenerated = botFingerprints.some(fp => myMsg.includes(fp));
+            
+            if (!isBotGenerated && myMsg.trim().length > 0) {
+                const expireTime = Date.now() + 86400000; // 24 horas em ms
+                mutedUsers.set(rawJid, expireTime);
+                console.log(`[Human Takeover] Intervenção humana detectada em ${rawJid}. Bot mutado por 24 horas.`);
+            } else {
+                console.log(`[Human Takeover] Mensagem própria do bot ignorada (fromMe) para ${rawJid}.`);
+            }
             return;
         } else {
             // Se o usuário mandou mensagem, checa se ele está mutado
@@ -498,7 +512,7 @@ async function setupEvents() {
                 let audioParts = [];
 
                 for (const msgData of queue) {
-                    if (msgData.text) combinedText += msgData.text + "\\n";
+                    if (msgData.text) combinedText += msgData.text + "\n";
                     if (msgData.media) {
                         if (msgData.media.mimeType.startsWith('image/')) {
                             imageParts.push({ inlineData: { data: msgData.media.data, mimeType: msgData.media.mimeType } });
@@ -587,14 +601,21 @@ async function setupEvents() {
                     return;
                 }
 
-                    let cleanSearchTermsArray = expandedQueryArray.length > 0 ? expandedQueryArray : [searchKeywords];
-                    // Remove \n de todos os itens do array
-                    cleanSearchTermsArray = cleanSearchTermsArray.map(t => t.replace(/\n/g, ' ').trim());
+                    // Se o expandSearchQuery retornou [] (saudação/sem intenção de produto), pula a busca no estoque
+                    // e vai direto pra IA com contexto vazio, deixando ela responder naturalmente.
+                    let cleanSearchTermsArray = expandedQueryArray.length > 0 ? expandedQueryArray : [];
+                    cleanSearchTermsArray = cleanSearchTermsArray.map(t => t.replace(/\n/g, ' ').trim()).filter(t => t.length > 0);
 
                     console.log(`[Unified Search] Avaliando Busca Simultânea para: [${cleanSearchTermsArray.join(', ')}]`);
 
-                    let principalMatches = await stockService.searchProduct(cleanSearchTermsArray);
-                    let geralMatches = await stockService.searchCategory(cleanSearchTermsArray);
+                    let principalMatches = [];
+                    let geralMatches = [];
+                    if (cleanSearchTermsArray.length > 0) {
+                        principalMatches = await stockService.searchProduct(cleanSearchTermsArray);
+                        geralMatches = await stockService.searchCategory(cleanSearchTermsArray);
+                    } else {
+                        console.log(`[Unified Search] Array de termos vazio (saudação/conversa). Pulando busca no estoque.`);
+                    }
 
                     let combinedContext = [];
                     if (principalMatches && principalMatches.length > 0) combinedContext.push(...principalMatches);
