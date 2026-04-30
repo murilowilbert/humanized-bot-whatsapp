@@ -642,6 +642,7 @@ async function setupEvents() {
 
                     stockContext = stockContext.slice(0, 15);
                     console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
+                    const originalStockContext = [...stockContext]; // Backup for Fallback
 
                     // Feature 8: Visual Verification com Gabarito (Oracle Master)
                     if (imageParts.length > 0 && stockContext && stockContext.length > 0) {
@@ -715,13 +716,29 @@ async function setupEvents() {
                                     // 2. Monta a nova string e busca a Peça referenciando o Hospedeiro
                                     const componentQuery = `Resistência Reparo ${hostName}`;
                                     console.log(`[Verificação Visual] Intenção de Peça detectada. Redirecionando busca para: "${componentQuery}"`);
-                                    stockContext = await stockService.searchProduct([componentQuery]);
-                                    finalVisualKeyword = componentQuery;
+                                    
+                                    const restrictedContext = await stockService.searchProduct([componentQuery]);
+                                    
+                                    if (restrictedContext && restrictedContext.length > 0) {
+                                        stockContext = restrictedContext;
+                                        finalVisualKeyword = componentQuery;
+                                    } else {
+                                        console.log(`[Busca Restrita] Nenhum item encontrado na planilha para "${componentQuery}". Restaurando os ${originalStockContext.length} itens originais (Fallback) para a IA Final tentar o match visual.`);
+                                        stockContext = originalStockContext;
+                                        // finalVisualKeyword remains null/unaffected so the AI knows it's a generic fallback
+                                    }
 
                                 } else {
                                     // Fluxo Padrão: Busca exatamente o EAN visualizado
-                                    stockContext = await stockService.searchProduct([visualConfirm]);
-                                    finalVisualKeyword = visualConfirm;
+                                    const exactContext = await stockService.searchProduct([visualConfirm]);
+                                    
+                                    if (exactContext && exactContext.length > 0) {
+                                        stockContext = exactContext;
+                                        finalVisualKeyword = visualConfirm;
+                                    } else {
+                                        console.log(`[Busca Restrita] EAN ${visualConfirm} não encontrado no estoque atual. Restaurando fallback.`);
+                                        stockContext = originalStockContext;
+                                    }
                                 }
 
                             } else {
