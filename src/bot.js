@@ -826,12 +826,19 @@ async function setupEvents() {
                 let fullText = response.text;
 
                 // 2. Interceptação e Hardcode de Falhas (Fim das Frases Robóticas)
-                if (fullText.includes("[JSON_HANDOFF]")) {
+                // Regex robusto: detecta JSON de HANDOFF mesmo quando embutido no meio/fim de texto natural
+                const jsonHandoffRegex = /\{\s*"intent"\s*:\s*"HANDOFF"[^}]*\}/i;
+                const hasJsonHandoff = jsonHandoffRegex.test(fullText) || fullText.includes("[JSON_HANDOFF]");
+
+                if (hasJsonHandoff) {
                     const fallbackPhrases = [
                         "Vou pedir pro pessoal do balcão dar uma olhada na prateleira se temos esse exato, só um segundo!",
                         "Deixa eu repassar pra um dos atendentes verificar aqui na loja pra você, rapidinho.",
                         "Vou dar uma confirmada com o pessoal aqui do balcão pra ver as opções que temos, te chamo já já!"
                     ];
+                    // Loga o item que gerou o handoff para rastreabilidade
+                    const itemMatch = fullText.match(/"item"\s*:\s*"([^"]+)"/);
+                    if (itemMatch) console.log(`[Handoff Interceptor] Item não encontrado: "${itemMatch[1]}"`);
                     fullText = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
                 }
 

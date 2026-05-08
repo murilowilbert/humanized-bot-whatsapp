@@ -237,9 +237,31 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 "- [REGRA DE PRECIFICAÇÃO]: VOCÊ É ESTRITAMENTE PROIBIDO DE INVENTAR OU DEDUZIR PREÇOS. Se o preço exato do produto solicitado não estiver no bloco [Itens no Contexto], você DEVE dizer que precisa confirmar o valor no sistema. Jamais utilize seu conhecimento prévio para dar preços.\n" +
                 "- [MÚLTIPLOS ITENS - REFORÇO]: Se o cliente pediu vários produtos e o contexto contém resultados para APENAS ALGUNS, APRESENTE os encontrados normalmente (com preço e foto) e para os que NÃO estão no contexto diga que vai verificar com o balcão. NUNCA faça handoff total quando há itens parciais encontrados. A VENDA dos itens encontrados tem prioridade absoluta.";
 
+            // --- FIX 4: TRIAGEM OBRIGATÓRIA PARA CATEGORIA GERAL ---
+            // Detecta se o contexto retornou SOMENTE itens da Tabela Geral (sem produtos da Tabela Principal)
+            // Esses itens têm 'categoria_geral' mas não têm 'código' ou 'modelo/produto'
+            const hasOnlyGeralItems = stockContext.length > 0 &&
+                stockContext.every(item => item['categoria_geral'] && !item['código'] && !item['codigo']);
+
+            let triageDirective = '';
+            if (hasOnlyGeralItems) {
+                const geralItem = stockContext[0];
+                const triageQuestions = geralItem['perguntas_recomendadas'] || geralItem['Perguntas_Recomendadas'] || '';
+                triageDirective = `\n### DIRETIVA DE TRIAGEM OBRIGATÓRIA (CATEGORIA GERAL DETECTADA):\n` +
+                    `O cliente pediu um produto que está na nossa tabela de categorias gerais, mas SEM estoque específico listado. ` +
+                    `Categoria identificada: "${geralItem['categoria_geral'] || 'Geral'}". ` +
+                    `VOCÊ DEVE OBRIGATORIAMENTE fazer 1 ou 2 perguntas de triagem ANTES de acionar qualquer handoff. ` +
+                    `O objetivo é coletar informações (medida, marca, voltagem, modelo) para que o atendente humano já receba o contexto mastigado. ` +
+                    (triageQuestions ? `Perguntas sugeridas para esta categoria: "${triageQuestions}". ` : '') +
+                    `REGRA INVIOLÁVEL: É ESTRITAMENTE PROIBIDO fazer handoff sem primeiro fazer ao menos 1 pergunta de triagem. ` +
+                    `Somente após o cliente responder à triagem, faça o handoff com o contexto completo.\n`;
+                console.log(`[Triagem Obrigatória] Categoria Geral detectada: "${geralItem['categoria_geral']}". Injetando diretiva de triagem.`);
+            }
+
             const sessionPrompt = (offHoursContext ? `### ALERTA DE HORÁRIO COMERCIAL (SIGA ESTRITAMENTE):\n${offHoursContext}\n\n` : "") +
                 `### INFORMAÇÕES DA LOJA:\n${storeInfo}\n\n${stockInfoText}\n\n` +
                 `${specificRules}\n\n` +
+                `${triageDirective}` +
                 `${whatsappFormattingInstruct}\n\n` +
                 `### INSTRUÇÃO DE SESSÃO E IDENTIDADE:\n` +
                 (dailyGreetingContext ? `${dailyGreetingContext}\n` : "") +
@@ -484,7 +506,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 4. Variações de Cauda Longa: GERE MÚLTIPLAS VARIAÇÕES da frase completa do usuário. Inclua a versão exata que ele digitou e variações com preposições alternativas (ex: se pedir "fio pra chuveiro", retorne ["fio para chuveiro", "fio de chuveiro", "cabo para chuveiro", "fio chuveiro"]).
 5. DIRETRIZ DE PRECISÃO: É ESTRITAMENTE PROIBIDO fatiar a string e enviar termos genéricos isolados A MENOS QUE se trate de atributos chaves (veja regra 9).
 6. REMOÇÃO DE STOP WORDS EXTREMAS: Você DEVE remover preposições que sujem a busca quando não forem vitais, mas mantenha-as se fizerem parte da Cauda Longa do item 4.
-7. IGNORE SAUDAÇÕES: Ignore completamente palavras de cortesia e saudações que vierem na mensagem ("bom dia", "boa tarde", "oi", "tudo bem", "obrigado"). Elas destroem a busca no banco de dados.
+7. IGNORE SAUDAÇÕES: Ignore completamente palavras de cortesia e saudações que vierem na mensagem ("bom dia", "boa tarde", "oi", "tudo bem", "obrigado"). Elas destroem a busca no banco de dados. NUNCA inclua "bom dia", "boa tarde" ou qualquer saudação dentro de nenhum termo do array resultante. Os termos gerados devem conter APENAS nomes de produtos e suas variações técnicas.
 8. LIMPEZA DE TERMOS: É ESTRITAMENTE PROIBIDO incluir adjetivos de valor, preço, tamanho ou qualidade (ex: "barato", "caro", "econômico", "pequeno") na array de busca. Retorne APENAS substantivos e especificações técnicas diretas. Exemplo: se o cliente pedir "chuveiro barato", a sua array deve conter apenas ["chuveiro"]. A análise de preço será feita posteriormente pela IA principal.
 9. QUEBRA DE TOKENS: Quando o usuário pedir um produto com um atributo específico (ex: "chuveiro com pressurizador", "torneira de metal"), ALÉM de gerar a combinação, você DEVE OBRIGATORIAMENTE incluir na array os atributos chave de forma isolada e seus sinônimos. Exemplo: ["chuveiro pressurizador", "pressurizador", "pressurizada", "turbo"]. Isso garantirá que o motor de busca encontre o atributo mesmo se o nome principal estiver escrito diferente na planilha.
 10. PROIBIÇÃO DE FRAGMENTAÇÃO: Você é ESTRITAMENTE PROIBIDO de quebrar termos compostos em palavras soltas genéricas. Se o usuário busca "fechadura para porta de madeira", NÃO retorne "madeira" ou "porta" como palavras isoladas na array, pois isso poluíra o banco de dados. Retorne apenas o termo composto e específico: ["fechadura porta de madeira"].
@@ -494,6 +516,12 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
 14. MEDIDAS E TAMANHOS: Ao extrair produtos com medidas (metros, mm, kg), forneça variações curtas e separe a medida do nome base para garantir o match no banco (ex: ["fita isolante 5m", "fita isolante 5", "fita isolante preta"]).
 15. FORNECEDORES: Se a mensagem for claramente de um fornecedor, representante comercial oferecendo catálogos, parcerias, revenda ou tabela de preços, você DEVE retornar ESTRITAMENTE o array: ["INTENCAO_FORNECEDOR"].
 16. [CORREÇÃO ORTOGRÁFICA CONTEXTUAL]: Você atua em uma FERRAGEM e LOJA DE MATERIAIS DE CONSTRUÇÃO. Clientes frequentemente cometem erros fonéticos ou de digitação (ex: 'acento' = 'assento de vaso', 'xave' = 'chave', 'tijo' = 'tijolo'). Antes de gerar os termos de busca, traduza e corrija as palavras do usuário para o português correto do varejo de construção. Suas palavras-chave geradas DEVEM conter a grafia correta do produto desejado, ignorando o erro do cliente.
+17. MULTI-PRODUTO (OBRIGATÓRIO): Se a mensagem mencionar DOIS OU MAIS produtos distintos (ex: "torneira Zagonel Luna e chuveiro Ducali 7500w"), você DEVE gerar termos de busca SEPARADOS para CADA produto. NUNCA misture os nomes de dois produtos diferentes num único termo. Exemplo correto: ["torneira zagonel luna", "torneira eletronica zagonel luna", "chuveiro ducali 7500w", "chuveiro ducali"].
+18. VOCABULÁRIO DE FERRAGEM (SINÔNIMOS TÉCNICOS OBRIGATÓRIOS): Certos produtos têm nomes populares diferentes dos nomes técnicos da prateleira. Você DEVE incluir as variações técnicas obrigatoriamente quando detectar as descrições abaixo:
+    - "peça de porcelana", "isolador de porcelana", "terminal de porcelana", "peça branca do fio", "peça do fio terra" → ADICIONE SEMPRE: "conector porcelana", "conector"
+    - "espelho de tomada", "plaquinha de interruptor" → ADICIONE: "espelho"
+    - "curvinha do cano", "joelho de cano" → ADICIONE: "joelho", "cotovelo"
+    - "presilha de cano", "grampo de cano" → ADICIONE: "abraçadeira"
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"
