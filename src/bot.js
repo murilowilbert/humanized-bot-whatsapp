@@ -200,21 +200,23 @@ async function setupEvents() {
     });
 
     sock.ev.on('messages.upsert', async (m) => {
-        console.log(`[DEBUG] messages.upsert disparado | type=${m.type} | msgs=${m.messages?.length}`);
-        if (m.type !== 'notify') {
-            console.log(`[DEBUG] Ignorado: m.type='${m.type}' (não é notify)`);
-            return;
-        }
+        // Aceita 'notify' (tempo real) e 'append' (reconexão) mas ignora sync de histórico
+        if (m.type !== 'notify' && m.type !== 'append') return;
 
         const msg = m.messages[0];
-        console.log(`[DEBUG] Msg recebida | fromMe=${msg.key?.fromMe} | jid=${msg.key?.remoteJid} | hasMessage=${!!msg.message} | type=${msg.message ? Object.keys(msg.message)[0] : 'null'}`);
+
+        // Guarda de frescor: ignora mensagens antigas (sync de histórico em lote)
+        const msgTimestamp = (msg.messageTimestamp?.low || msg.messageTimestamp || 0);
+        const ageSeconds = Math.floor(Date.now() / 1000) - msgTimestamp;
+        if (m.type === 'append' && ageSeconds > 60) {
+            return; // Mensagem antiga de sincronização, ignora
+        }
 
         // 0. Trava de descarte imediato (Ignorar Broadcast/Status)
         if (msg.key?.remoteJid === 'status@broadcast') return;
 
         // --- GLOBAL DASHBOARD STATE CONTROLS ---
         if (!server.isBotEnabled()) {
-            console.log(`[DEBUG] Ignorado: Bot desligado (isBotEnabled=false)`);
             return; // Bot completamente desligado (Early Return Global)
         }
 
@@ -225,10 +227,7 @@ async function setupEvents() {
             '';
 
         const rawJid = msg.key?.remoteJid;
-        if (!rawJid) {
-            console.log(`[DEBUG] Ignorado: rawJid vazio/null`);
-            return;
-        }
+        if (!rawJid) return;
         
         // --- 24h COOLDOWN SYSTEM (HUMAN TAKEOVER) ---
         if (msg.key.fromMe) {
@@ -255,7 +254,6 @@ async function setupEvents() {
             // Se o usuário mandou mensagem, checa se ele está mutado
             if (mutedUsers.has(rawJid)) {
                 if (Date.now() < mutedUsers.get(rawJid)) {
-                    console.log(`[DEBUG] Ignorado: Usuário ${rawJid} está MUTADO (Human Takeover ativo)`);
                     return; // Early Return silencioso
                 } else {
                     mutedUsers.delete(rawJid); // Expirou, tira do castigo
