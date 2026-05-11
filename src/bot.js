@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage, Browsers, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
@@ -366,7 +366,6 @@ async function setupEvents() {
 
         // O bloco manual de "State Machine: AWAITING_TRIAGE_ANSWER" foi completamente apagado em favor do Controle Delegado ao LLM.
 
-        console.log(`Recebido de ${pushname} (${headers}): ${textContent} (Aguardando debounce...)`);
         metricsService.incrementMessages();
 
         // Edge Case 7: Rate Limiting Básico (Max 6 seguidos)
@@ -401,6 +400,8 @@ async function setupEvents() {
 
         // 0. Initialize Variables (Moved up for queuing)
         let mediaData = null;
+
+        if (!msg.message) return; // Ignora mensagens vazias ou de sistema (evita crash no Object.keys)
 
         // 0.1 Process Media
         const messageType = Object.keys(msg.message)[0];
@@ -988,7 +989,7 @@ async function initialize() {
         console.log("[Boot] Iniciando aquecimento de Caches (Google Sheets)...");
         await googleSheetsService.getCachedSheetData();
         await googleSheetsService.getCachedCategoryData();
-        startAutoRefresh(); // Start 45 min background loop
+        startAutoRefresh(3 * 60 * 60 * 1000); // 3 hours background loop
 
         const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
         const { version } = await fetchLatestBaileysVersion();
@@ -997,7 +998,10 @@ async function initialize() {
 
         sock = makeWASocket({
             version,
-            auth: state,
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+            },
             printQRInTerminal: false,
             logger: pino({ level: 'silent' }), // Silencia completamente a poluição do Baileys
             browser: Browsers.baileys('Desktop'),
