@@ -998,10 +998,7 @@ async function initialize() {
 
         sock = makeWASocket({
             version,
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
-            },
+            auth: state,
             printQRInTerminal: false,
             logger: pino({ level: 'silent' }), // Silencia completamente a poluição do Baileys
             browser: Browsers.baileys('Desktop'),
