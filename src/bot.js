@@ -199,9 +199,19 @@ async function setupEvents() {
         }
     });
 
+    // --- DEBUG: Verificar se o socket recebe QUALQUER evento de mensagem ---
+    sock.ev.on('messages.update', (updates) => {
+        console.log(`[DEBUG SOCKET] messages.update recebido: ${updates.length} update(s)`);
+    });
+
     sock.ev.on('messages.upsert', async (m) => {
+        console.log(`[DEBUG] messages.upsert TOPO | type=${m.type} | msgs=${m.messages?.length} | firstKey=${JSON.stringify(m.messages?.[0]?.key)}`);
+
         // Aceita 'notify' (tempo real) e 'append' (reconexão) mas ignora sync de histórico
-        if (m.type !== 'notify' && m.type !== 'append') return;
+        if (m.type !== 'notify' && m.type !== 'append') {
+            console.log(`[DEBUG] Tipo descartado: '${m.type}'`);
+            return;
+        }
 
         const msg = m.messages[0];
 
@@ -209,6 +219,7 @@ async function setupEvents() {
         const msgTimestamp = (msg.messageTimestamp?.low || msg.messageTimestamp || 0);
         const ageSeconds = Math.floor(Date.now() / 1000) - msgTimestamp;
         if (m.type === 'append' && ageSeconds > 60) {
+            console.log(`[DEBUG] Mensagem antiga descartada (${ageSeconds}s atrás)`);
             return; // Mensagem antiga de sincronização, ignora
         }
 
