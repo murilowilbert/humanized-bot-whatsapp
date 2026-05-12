@@ -199,10 +199,6 @@ async function setupEvents() {
         }
     });
 
-    // --- DEBUG: Verificar se o socket recebe QUALQUER evento de mensagem ---
-    sock.ev.on('messages.update', (updates) => {
-        console.log(`[DEBUG SOCKET] messages.update recebido: ${updates.length} update(s)`);
-    });
 
     sock.ev.on('messages.upsert', async (m) => {
         // Aceita qualquer tipo de entrega do Baileys (notify, append, etc.)
@@ -225,37 +221,10 @@ async function setupEvents() {
 
         const rawJid = msg.key?.remoteJid;
         if (!rawJid) return;
-        
-        // --- 24h COOLDOWN SYSTEM (HUMAN TAKEOVER) ---
+
+        // --- TRATAMENTO DE MENSAGENS PRÓPRIAS (fromMe) ---
         if (msg.key.fromMe) {
-            // Ignora mensagens geradas pelo próprio bot (sock.sendMessage)
-            // Apenas intervenção humana real (digitada no celular/web) deve mutar
-            const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-            const botFingerprints = [
-                'Há algo mais em que eu possa te ajudar?',
-                'engasgada', 'instabilidade', '♻️ Sessão reiniciada',
-                '✅ Bot reativado', '🔄 Baixando dados', '⚠️ [Modo Teste]',
-                'Vou repassar', 'pessoal do balcão', '{{COD:'
-            ];
-            const isBotGenerated = botFingerprints.some(fp => myMsg.includes(fp));
-            
-            if (!isBotGenerated && myMsg.trim().length > 0) {
-                const expireTime = Date.now() + 86400000; // 24 horas em ms
-                mutedUsers.set(rawJid, expireTime);
-                console.log(`[Human Takeover] Intervenção humana detectada em ${rawJid}. Bot mutado por 24 horas.`);
-            } else {
-                console.log(`[Human Takeover] Mensagem própria do bot ignorada (fromMe) para ${rawJid}.`);
-            }
-            return;
-        } else {
-            // Se o usuário mandou mensagem, checa se ele está mutado
-            if (mutedUsers.has(rawJid)) {
-                if (Date.now() < mutedUsers.get(rawJid)) {
-                    return; // Early Return silencioso
-                } else {
-                    mutedUsers.delete(rawJid); // Expirou, tira do castigo
-                }
-            }
+            return; // Ignora silenciosamente todas as mensagens do próprio bot
         }
 
         const quotedObj = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -316,16 +285,14 @@ async function setupEvents() {
             return;
         }
 
-        // Edge Case 8: Tratamento do 'fromMe' (Atendente Web / Human Takeover)
+        // Edge Case 8: Comando !bot (Reativar bot para este chat)
         if (msg.key.fromMe) {
             const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
             if (myMsg.trim() === '!bot') {
                 userPausedStates.delete(jid);
+                mutedUsers.delete(rawJid);
                 console.log(`[Manual Override] Atendente soltou a trava (!bot) para ${headers}`);
                 await sock.sendMessage(jid, { text: "✅ Bot reativado para este chat." });
-            } else {
-                userPausedStates.set(jid, Date.now());
-                console.log(`[Human Takeover] Atendente assumiu manualmente pelo aparelho. Bot mutado para o cliente ${headers}`);
             }
             return;
         }
