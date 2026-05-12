@@ -205,23 +205,9 @@ async function setupEvents() {
     });
 
     sock.ev.on('messages.upsert', async (m) => {
-        console.log(`[DEBUG] messages.upsert TOPO | type=${m.type} | msgs=${m.messages?.length} | firstKey=${JSON.stringify(m.messages?.[0]?.key)}`);
-
-        // Aceita 'notify' (tempo real) e 'append' (reconexão) mas ignora sync de histórico
-        if (m.type !== 'notify' && m.type !== 'append') {
-            console.log(`[DEBUG] Tipo descartado: '${m.type}'`);
-            return;
-        }
-
+        // Aceita qualquer tipo de entrega do Baileys (notify, append, etc.)
         const msg = m.messages[0];
-
-        // Guarda de frescor: ignora mensagens antigas (sync de histórico em lote)
-        const msgTimestamp = (msg.messageTimestamp?.low || msg.messageTimestamp || 0);
-        const ageSeconds = Math.floor(Date.now() / 1000) - msgTimestamp;
-        if (m.type === 'append' && ageSeconds > 60) {
-            console.log(`[DEBUG] Mensagem antiga descartada (${ageSeconds}s atrás)`);
-            return; // Mensagem antiga de sincronização, ignora
-        }
+        if (!msg) return;
 
         // 0. Trava de descarte imediato (Ignorar Broadcast/Status)
         if (msg.key?.remoteJid === 'status@broadcast') return;
