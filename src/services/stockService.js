@@ -156,10 +156,59 @@ async function searchCategory(query) {
     }
     return categoryResult || [];
 }
+/**
+ * Busca RELAXADA de Produtos Similares (Sugestão)
+ * Usada como fallback quando searchProduct retorna vazio.
+ * Retorna itens "parecidos" que poderiam ajudar o cliente.
+ * @param {Array<string>|string} query Termos de busca
+ * @returns {Array} Lista de produtos similares com flag _isSuggestion
+ */
+async function searchSimilarProducts(query) {
+    // 1. Busca relaxada na Planilha Dinâmica do Google (Prioridade)
+    const dynamicResults = await googleSheetsService.searchSimilarInSheet(query);
+    if (dynamicResults && dynamicResults.length > 0) {
+        console.log(`[Busca Similar] Encontrados ${dynamicResults.length} itens similares na planilha para "${query}"`);
+        return dynamicResults;
+    }
+
+    // 2. Fallback: Busca relaxada no estoque offline
+    const server = require('../server/app');
+    if (!server.isFullStockEnabled()) {
+        return [];
+    }
+
+    const products = await loadStock();
+    const queryString = Array.isArray(query) ? query.join(' ') : query;
+    const cleanQuery = queryString.toLowerCase().replace(/[?,.!\n]/g, ' ');
+    const stopWords = ['voces', 'tem', 'algum', 'de', 'da', 'do', 'um', 'uma', 'quais', 'qual', 'o', 'a', 'quero', 'gostaria', 'saber', 'se', 'por', 'favor', 'como', 'funciona', 'para', 'que', 'serve', 'marca', 'marcas', 'vocês', 'você', 'voce', 'temos', 'modelo', 'modelos', 'ola', 'bom', 'dia', 'tarde', 'noite', 'tudo', 'bem', 'certo', 'preciso'];
+    const words = cleanQuery.split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
+
+    if (words.length === 0) return [];
+
+    // Score relaxado: basta 1 keyword bater parcialmente
+    const scoredProducts = products.map(p => {
+        const name = p.Produto ? p.Produto.toString().toLowerCase() : "";
+        const cat = p.Categoria ? p.Categoria.toString().toLowerCase() : "";
+        let score = 0;
+
+        for (const w of words) {
+            if (name.includes(w)) score += 2;
+            else if (cat.includes(w)) score += 1;
+            // Match parcial (se pelo menos 4 caracteres da palavra batem)
+            else if (w.length >= 4 && name.split(/\s+/).some(nameWord => nameWord.includes(w.substring(0, 4)))) score += 0.5;
+        }
+        return { product: { ...p, _isSuggestion: true }, score };
+    }).filter(p => p.score > 0);
+
+    scoredProducts.sort((a, b) => b.score - a.score);
+    return scoredProducts.slice(0, 10).map(sp => sp.product);
+}
+
 module.exports = {
     loadStock,
     searchProduct,
     searchCategory,
+    searchSimilarProducts,
     getProductByCode,
     getSimilarProducts
 };

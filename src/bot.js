@@ -224,7 +224,31 @@ async function setupEvents() {
 
         // --- TRATAMENTO DE MENSAGENS PRÓPRIAS (fromMe) ---
         if (msg.key.fromMe) {
-            return; // Ignora silenciosamente todas as mensagens do próprio bot
+            const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+
+            // 1. Extração do JID e ID para logs e processamento
+            const cleanIdFromMe = rawJid.split('@')[0];
+
+            // Edge Case 8: Comando !bot (Reativar bot para este chat) — processado ANTES do return
+            if (myMsg.trim() === '!bot') {
+                userPausedStates.delete(rawJid);
+                mutedUsers.delete(rawJid);
+                console.log(`[Manual Override] Atendente soltou a trava (!bot) para ${cleanIdFromMe}`);
+                // Não envia confirmação para evitar auto-trigger do bot em si
+                return;
+            }
+
+            // AUTO-PAUSE: Qualquer mensagem humana (PC ou celular) ativa o silenciamento do bot.
+            // Isso resolve o bug onde respostas do celular não silenciavam o bot.
+            if (myMsg.trim().length > 0) {
+                if (!userPausedStates.has(rawJid)) {
+                    console.log(`[Handoff Auto-Pause] Mensagem humana detectada (fromMe) para ${cleanIdFromMe}. Bot silenciado por 12h.`);
+                    userPausedStates.set(rawJid, Date.now());
+                    metricsService.incrementHandoff();
+                }
+            }
+
+            return; // Ignora silenciosamente todas as mensagens do próprio número
         }
 
         const quotedObj = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -285,32 +309,20 @@ async function setupEvents() {
             return;
         }
 
-        // Edge Case 8: Comando !bot (Reativar bot para este chat)
-        if (msg.key.fromMe) {
-            const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-            if (myMsg.trim() === '!bot') {
-                userPausedStates.delete(jid);
-                mutedUsers.delete(rawJid);
-                console.log(`[Manual Override] Atendente soltou a trava (!bot) para ${headers}`);
-                await sock.sendMessage(jid, { text: "✅ Bot reativado para este chat." });
-            }
-            return;
-        }
-
         // Clear existing timeout if the user sends a new message
         if (interactionTimeouts.has(jid)) {
             clearTimeout(interactionTimeouts.get(jid));
             interactionTimeouts.delete(jid);
         }
 
-        // Edge Case 2 & 9: Middleware de Pausa (Handoff) com Inatividade TTL 6H
+        // Edge Case 2 & 9: Middleware de Pausa (Handoff) com Inatividade TTL 12H
         if (userPausedStates.has(jid)) {
             const pausedTimestamp = userPausedStates.get(jid);
             const nowTime = Date.now();
-            // Permanece mudo por 6 horas (6 * 60 * 60 * 1000)
-            if (nowTime - pausedTimestamp > 21600000) {
+            // Permanece mudo por 12 horas (12 * 60 * 60 * 1000 = 43200000)
+            if (nowTime - pausedTimestamp > 43200000) {
                 userPausedStates.delete(jid);
-                console.log(`[Handoff Mute] TTL 6h Vencido. Travas liberadas para ${headers}`);
+                console.log(`[Handoff Mute] TTL 12h Vencido. Travas liberadas para ${headers}`);
             } else {
                 console.log(`[Handoff Mute] Ignorando mensagem de ${pushname} (${headers})`);
                 return; // Ignora completamente para o humano assumir
@@ -615,6 +627,28 @@ async function setupEvents() {
 
                     stockContext = stockContext.slice(0, 15);
                     console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
+
+                    // --- BUSCA DE PRODUTOS SIMILARES (Fallback Inteligente) ---
+                    // Se a busca unificada não encontrou nada mas havia termos válidos,
+                    // tenta buscar produtos SIMILARES para sugerir ao cliente
+                    let hasSuggestions = false;
+                    if (stockContext.length === 0 && cleanSearchTermsArray.length > 0) {
+                        console.log(`[Busca Similar] Busca principal vazia. Tentando sugestões para: [${cleanSearchTermsArray.join(', ')}]`);
+                        const similarResults = await stockService.searchSimilarProducts(cleanSearchTermsArray);
+                        if (similarResults && similarResults.length > 0) {
+                            // Extrai os itens e marca como sugestão
+                            for (const sr of similarResults) {
+                                const realItem = sr.item || sr;
+                                realItem._isSuggestion = true;
+                                stockContext.push(realItem);
+                            }
+                            hasSuggestions = true;
+                            console.log(`[Busca Similar] ✅ Encontrados ${stockContext.length} produtos similares para sugestão!`);
+                        } else {
+                            console.log(`[Busca Similar] Nenhum produto similar encontrado. Prosseguindo para handoff.`);
+                        }
+                    }
+
                     const originalStockContext = [...stockContext]; // Backup for Fallback
 
                     // Feature 8: Visual Verification com Gabarito (Oracle Master)
@@ -765,7 +799,7 @@ async function setupEvents() {
                     await sock.sendMessage(jid, { text: fallbackPardonMsg });
                     await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: fallbackPardonMsg } });
 
-                    userPausedStates.set(jid, getBrazilDateString());
+                    userPausedStates.set(jid, Date.now());
                     metricsService.incrementHandoff();
                     if (server.addHandoff) server.addHandoff({ phone: headers, reason: "Falha/Timeout API" });
 
@@ -884,7 +918,7 @@ async function setupEvents() {
                         clearTimeout(interactionTimeouts.get(jid));
                         interactionTimeouts.delete(jid);
                     }
-                    userPausedStates.set(jid, getBrazilDateString());
+                    userPausedStates.set(jid, Date.now());
                     metricsService.incrementHandoff();
                     if (server.addHandoff) server.addHandoff({ phone: headers, reason: "Transbordo AI" });
                     return; // Encerra o fluxo aqui para não iniciar timer de inatividade

@@ -334,9 +334,65 @@ async function searchCategoryInSheet(keywordsArray) {
     return [];
 }
 
+/**
+ * Busca RELAXADA (Similaridade) — Usada quando a busca principal não encontra nada.
+ * Retorna produtos que são "parecidos" com o que o cliente pediu para sugestão.
+ * @param {Array<string>|string} keywordsArray Termos de busca expandidos
+ * @returns {Array} Até 10 produtos similares com flag _isSuggestion
+ */
+async function searchSimilarInSheet(keywordsArray) {
+    const data = await getCachedSheetData();
+    if (!data || data.length === 0) return [];
+
+    let searchTerms = Array.isArray(keywordsArray) ? keywordsArray : [keywordsArray];
+
+    const options = {
+        includeScore: true,
+        useExtendedSearch: true,
+        threshold: 0.45, // Relaxado (vs 0.2 da busca exata) para capturar matches parciais
+        minMatchCharLength: 3,
+        ignoreLocation: true,
+        keys: [
+            { name: 'modelo/produto', weight: 2.0 },
+            { name: 'tags para busca (sinônimos)', weight: 1.5 },
+            { name: 'categoria', weight: 1.5 },
+            { name: 'atributos físicos', weight: 0.3 },
+            { name: 'características principais', weight: 0.5 },
+            { name: 'marca', weight: 1.5 },
+            { name: 'potência/voltagem', weight: 1.0 },
+            { name: 'potencia/voltagem', weight: 1.0 }
+        ]
+    };
+
+    const fuse = new Fuse(data, options);
+    let allResults = [];
+
+    for (const term of searchTerms) {
+        const tokenizedTerm = term.trim().split(/\s+/).join(' ');
+        const results = fuse.search(tokenizedTerm);
+        allResults = allResults.concat(results);
+    }
+
+    // Desduplicação
+    const uniqueResults = Array.from(new Map(allResults.map(r => {
+        const uniqueKey = r.item['ean'] || r.item['código'] || r.item['codigo'] || r.item['modelo/produto'];
+        return [uniqueKey, r];
+    })).values());
+
+    // Ordena por score (melhor primeiro)
+    uniqueResults.sort((a, b) => a.score - b.score);
+
+    // Marca cada item com flag de sugestão e retorna até 10
+    return uniqueResults.slice(0, 10).map(r => {
+        const item = { ...r.item, _isSuggestion: true };
+        return { item, matchCount: Math.round((1 - r.score) * 10) };
+    });
+}
+
 module.exports = {
     fetchGoogleSheetCSV,
     searchProductInSheet,
+    searchSimilarInSheet,
     searchCategoryInSheet,
     getCachedSheetData,
     getCachedCategoryData,

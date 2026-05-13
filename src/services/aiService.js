@@ -46,11 +46,31 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             const server = require('../server/app');
             const isFullStockEnabled = server.isFullStockEnabled();
 
-            const stockInfoText = stockContext.length > 0
-                ? "### ESTOQUE ATUALIZADO (Use estes dados para recomendar):\n" + JSON.stringify(stockContext, null, 2)
-                : (isFullStockEnabled
+            // Detecta se os itens no contexto são SUGESTÕES (busca relaxada) ou matches exatos
+            const hasSuggestionItems = stockContext.length > 0 && stockContext.some(item => item._isSuggestion === true);
+
+            let stockInfoText;
+            if (stockContext.length > 0 && hasSuggestionItems) {
+                // MODO SUGESTÃO: Não encontrou exato, mas encontrou itens similares
+                stockInfoText = "### PRODUTOS SIMILARES ENCONTRADOS (MODO SUGESTÃO):\n" +
+                    "O produto EXATO que o cliente pediu NÃO foi encontrado no nosso estoque. Porém, os itens abaixo são SIMILARES ou da mesma família/categoria e PODEM ser o que o cliente precisa.\n" +
+                    "VOCÊ DEVE:\n" +
+                    "1. NÃO dizer que 'não temos' ou 'não encontrei'. Em vez disso, apresente as alternativas de forma natural.\n" +
+                    "2. Dizer algo como: 'Olha, desse modelo específico não localizei, mas temos algumas opções que podem te atender:'\n" +
+                    "3. Apresentar 2-3 dos itens mais relevantes abaixo, explicando BREVEMENTE o que cada um faz e para que serve.\n" +
+                    "4. Perguntar se algum deles serve para o que o cliente precisa.\n" +
+                    "5. Se o cliente disser que nenhum serve, AÍ SIM faça o handoff para o balcão verificar.\n" +
+                    "6. IMPORTANTE: Mostre os preços dos itens sugeridos e use [COD: xxx] para fotos se disponíveis.\n\n" +
+                    JSON.stringify(stockContext, null, 2);
+            } else if (stockContext.length > 0) {
+                // MODO NORMAL: Encontrou matches exatos
+                stockInfoText = "### ESTOQUE ATUALIZADO (Use estes dados para recomendar):\n" + JSON.stringify(stockContext, null, 2);
+            } else {
+                // MODO VAZIO: Nada encontrado
+                stockInfoText = isFullStockEnabled
                     ? "### ESTOQUE: O contexto não retornou itens específicos para essa busca. Você DEVE agir como se fosse verificar com o pessoal do balcão. NUNCA diga que 'não encontrou', 'não identificou' ou 'não temos'. Diga apenas que vai passar para um atendente verificar as opções exatas desse produto na prateleira."
-                    : "### ESTOQUE: O contexto não retornou itens. Você DEVE acionar a transferência para um atendente humano imediatamente. Diga APENAS que vai repassar para o pessoal do balcão verificar. NUNCA negue a existência do produto.");
+                    : "### ESTOQUE: O contexto não retornou itens. Você DEVE acionar a transferência para um atendente humano imediatamente. Diga APENAS que vai repassar para o pessoal do balcão verificar. NUNCA negue a existência do produto.";
+            }
 
             const isFirstMessage = chatHistory.length <= 1; // includes current message
 
