@@ -28,6 +28,7 @@ const userPausedStates = new Map(); // Controle de Handoff/Pausa
 const userSessions = new Map(); // Controle de Máquina de Estados (Triage, etc)
 const DEBOUNCE_TIME_MS = 5000; // Tempo de espera para o usuário terminar de digitar
 const mutedUsers = new Map(); // Sistema de Cooldown de 24h (Human Takeover)
+const botSentMessageIds = new Set(); // Rastreamento de mensagens enviadas pelo bot para evitar auto-handoff
 
 let sock = null;
 let initialized = false;
@@ -136,10 +137,11 @@ async function sendHumanLikeResponse(jid, text) {
             if (fileToSend) {
                 try {
                     // Tenta o envio da imagem
-                    await sock.sendMessage(jid, {
+                    const sentMsg = await sock.sendMessage(jid, {
                         image: { url: fileToSend },
                         caption: part.length > 0 ? part : undefined
                     });
+                    if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
                     mediaSuccess = true; // Se não lançou erro, sucesso!
                 } catch (mediaError) {
                     console.error(`[Mídia Dispatcher] Falha ao enviar foto ${fileToSend}, fazendo fallback de texto:`, mediaError.message);
@@ -150,7 +152,8 @@ async function sendHumanLikeResponse(jid, text) {
             // Fallback Text-Only: Foto não existe ou ocorreu erro no upload dela (Graceful Degradation)
             if(!mediaSuccess) {
                 if (part.length > 0) {
-                    await sock.sendMessage(jid, { text: part });
+                    const sentMsg = await sock.sendMessage(jid, { text: part });
+                    if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
                 }
             }
 
@@ -160,7 +163,10 @@ async function sendHumanLikeResponse(jid, text) {
             console.error(`Erro GERAL ao enviar bolha (Index ${i}):`, error);
             // Último nível absoluto de fallback
             try { 
-                if (part.length > 0) await sock.sendMessage(jid, { text: part }); 
+                if (part.length > 0) {
+                    const sentMsg = await sock.sendMessage(jid, { text: part });
+                    if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
+                }
             } catch(e) {}
         }
     }
@@ -225,9 +231,18 @@ async function setupEvents() {
         // --- TRATAMENTO DE MENSAGENS PRÓPRIAS (fromMe) ---
         if (msg.key.fromMe) {
             const myMsg = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+            const msgId = msg.key?.id;
 
             // 1. Extração do JID e ID para logs e processamento
             const cleanIdFromMe = rawJid.split('@')[0];
+
+            // FILTRO ANTI-AUTO-HANDOFF: Verifica se esta mensagem foi enviada pelo próprio bot.
+            // O Baileys emite messages.upsert para mensagens que NÓS enviamos via sock.sendMessage().
+            // Sem este filtro, o bot se auto-silenciava achando que um humano assumiu.
+            if (msgId && botSentMessageIds.has(msgId)) {
+                botSentMessageIds.delete(msgId); // Limpa para não acumular memória
+                return; // Ignora silenciosamente - é uma mensagem que o bot enviou
+            }
 
             // Edge Case 8: Comando !bot (Reativar bot para este chat) — processado ANTES do return
             if (myMsg.trim() === '!bot') {
@@ -238,11 +253,11 @@ async function setupEvents() {
                 return;
             }
 
-            // AUTO-PAUSE: Qualquer mensagem humana (PC ou celular) ativa o silenciamento do bot.
-            // Isso resolve o bug onde respostas do celular não silenciavam o bot.
+            // AUTO-PAUSE: Qualquer mensagem HUMANA (PC ou celular) ativa o silenciamento do bot.
+            // Agora é seguro pois mensagens do bot já foram filtradas acima.
             if (myMsg.trim().length > 0) {
                 if (!userPausedStates.has(rawJid)) {
-                    console.log(`[Handoff Auto-Pause] Mensagem humana detectada (fromMe) para ${cleanIdFromMe}. Bot silenciado por 12h.`);
+                    console.log(`[Handoff Auto-Pause] Mensagem humana REAL detectada (fromMe) para ${cleanIdFromMe}. Bot silenciado por 12h.`);
                     userPausedStates.set(rawJid, Date.now());
                     metricsService.incrementHandoff();
                 }
@@ -305,7 +320,8 @@ async function setupEvents() {
             }
 
             await prisma.chatHistory.deleteMany({ where: { phoneNumber: headers } });
-            await sock.sendMessage(jid, { text: "♻️ Sessão reiniciada com sucesso. Memória e estados da Máquina foram apagados." });
+            const sentMsg = await sock.sendMessage(jid, { text: "♻️ Sessão reiniciada com sucesso. Memória e estados da Máquina foram apagados." });
+            if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
             return;
         }
 
@@ -338,12 +354,15 @@ async function setupEvents() {
         // 0.3.5 Global Override for "Atualizar Estoque"
         if (isAdmin && (lowerText === 'atualizar estoque' || lowerText === 'update stock')) {
             console.log(`[Global Override] Comando Atualizar Estoque detectado por ${headers}. Fazendo download manual...`);
-            await sock.sendMessage(jid, { text: "🔄 Baixando dados mais recentes da planilha em tempo real... Aguarde." });
+            const sentMsgLoading = await sock.sendMessage(jid, { text: "🔄 Baixando dados mais recentes da planilha em tempo real... Aguarde." });
+            if (sentMsgLoading?.key?.id) botSentMessageIds.add(sentMsgLoading.key.id);
             try {
                 const regs = await forceRefreshCache();
-                await sock.sendMessage(jid, { text: `✅ Cache atualizado com sucesso!\n\nEstoque Principal: ${regs.principal} itens.\nCategorias: ${regs.categoria} intenções.` });
+                const sentMsgOk = await sock.sendMessage(jid, { text: `✅ Cache atualizado com sucesso!\n\nEstoque Principal: ${regs.principal} itens.\nCategorias: ${regs.categoria} intenções.` });
+                if (sentMsgOk?.key?.id) botSentMessageIds.add(sentMsgOk.key.id);
             } catch (err) {
-                await sock.sendMessage(jid, { text: `❌ Falha ao atualizar a planilha: ${err.message}` });
+                const sentMsgErr = await sock.sendMessage(jid, { text: `❌ Falha ao atualizar a planilha: ${err.message}` });
+                if (sentMsgErr?.key?.id) botSentMessageIds.add(sentMsgErr.key.id);
             }
             return;
         }
@@ -366,7 +385,8 @@ async function setupEvents() {
 
         if (sessionObj.msgCount > 6) {
             if (sessionObj.msgCount === 7) {
-                await sock.sendMessage(jid, { text: "Opa, recebi muitas mensagens de uma vez! Por favor, aguarde alguns segundos para eu conseguir processar tudo. 🔄" });
+                const sentMsg = await sock.sendMessage(jid, { text: "Opa, recebi muitas mensagens de uma vez! Por favor, aguarde alguns segundos para eu conseguir processar tudo. 🔄" });
+                if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
             }
             return; // Bloqueio silencioso se continuar floodando
         }
@@ -404,7 +424,8 @@ async function setupEvents() {
             await new Promise(resolve => setTimeout(resolve, 800));
 
             let docMsg = "Vou repassar o seu documento para um atendente humano analisar, só um segundo.";
-            await sock.sendMessage(jid, { text: docMsg });
+            const sentMsg = await sock.sendMessage(jid, { text: docMsg });
+            if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
             await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: docMsg } });
 
             userPausedStates.set(jid, Date.now());
@@ -584,7 +605,8 @@ async function setupEvents() {
                     console.log(`[Shield Fornecedor] Representante comercial detectado em ${jid}. Ignorando IA e mutando por 24h.`);
                     await sock.sendPresenceUpdate('composing', jid);
                     await new Promise(resolve => setTimeout(resolve, 1500));
-                    await sock.sendMessage(jid, { text: "Olá! Sou o assistente virtual da loja. Nossa equipe está focada no balcão agora, mas deixarei seu material registrado. Muito obrigado!" });
+                    const sentMsg = await sock.sendMessage(jid, { text: "Olá! Sou o assistente virtual da loja. Nossa equipe está focada no balcão agora, mas deixarei seu material registrado. Muito obrigado!" });
+                    if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
                     
                     // Muta por 24h instantaneamente
                     mutedUsers.set(jid, Date.now() + 86400000);
@@ -768,7 +790,8 @@ async function setupEvents() {
                 const onWait = async (waitTime) => {
                     if (server.isTestMode() && isAdmin) {
                         const seconds = Math.ceil(waitTime / 1000);
-                        await sock.sendMessage(jid, { text: `⚠️ [Modo Teste] API sobrecarregada. Aguardando ${seconds} segundos para tentar responder...` });
+                        const sentMsg = await sock.sendMessage(jid, { text: `⚠️ [Modo Teste] API sobrecarregada. Aguardando ${seconds} segundos para tentar responder...` });
+                        if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
                     }
                 };
 
@@ -796,7 +819,8 @@ async function setupEvents() {
 
                     // Resiliência da API e Tratamento de Erro Fatal (Timeout Fallback)
                     const fallbackPardonMsg = "Meu sistema de busca deu uma engasgada técnica aqui! Já vou repassar sua mensagem para um de nossos atendentes te ajudar, só um segundo.";
-                    await sock.sendMessage(jid, { text: fallbackPardonMsg });
+                    const sentMsg = await sock.sendMessage(jid, { text: fallbackPardonMsg });
+                    if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
                     await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: fallbackPardonMsg } });
 
                     userPausedStates.set(jid, Date.now());
@@ -898,7 +922,7 @@ async function setupEvents() {
                 // A.1) Send Location
                 if (locationMatch) {
                     try {
-                        await sock.sendMessage(jid, {
+                        const sentMsg = await sock.sendMessage(jid, {
                             location: {
                                 degreesLatitude: -29.572710910948512,
                                 degreesLongitude: -50.79102198858497,
@@ -906,6 +930,7 @@ async function setupEvents() {
                                 address: 'Rua Osvaldo Cruz, 417, Centro, Igrejinha'
                             }
                         });
+                        if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
                     } catch (e) {
                         console.error("Erro ao enviar a localização", e);
                     }
@@ -948,7 +973,8 @@ async function setupEvents() {
                         const timeoutId = setTimeout(async () => {
                             if (!sock) return;
                             try {
-                                await sock.sendMessage(jid, { text: "Há algo mais em que eu possa te ajudar?" });
+                                const sentMsg = await sock.sendMessage(jid, { text: "Há algo mais em que eu possa te ajudar?" });
+                                if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
 
                                 // Opcional: salvar no DB para contar também
                                 await prisma.chatHistory.create({
@@ -968,7 +994,8 @@ async function setupEvents() {
                 console.error("❌ Erro ao processar resposta da IA:", error);
                 console.error("[Erro Crítico Pós-Debounce]:", error);
                 try {
-                    await sock.sendMessage(jid, { text: "Desculpe, tive uma pequena instabilidade agora. Pode repetir sua dúvida?" });
+                    const sentMsg = await sock.sendMessage(jid, { text: "Desculpe, tive uma pequena instabilidade agora. Pode repetir sua dúvida?" });
+                    if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
                 } catch (e) { /* ignore fallback fail */ }
             } finally {
                 userIsProcessing.delete(jid); // Destrava!
