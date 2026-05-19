@@ -146,11 +146,57 @@ async function searchProductInSheet(keywordsArray) {
         }
     }
 
+    // --- CAMADA 1: Busca Direta por Substring (Token Decomposition) ---
+    // Resolve matches que o Fuse.js perde por distância fuzzy alta (ex: "cano fogão")
+    const directMatchMap = new Map();
+    const stopWordsSearch = new Set(['de', 'da', 'do', 'para', 'pra', 'pro', 'a', 'o', 'em', 'com', 'sem', 'à', 'um', 'uma', 'e', 'ou']);
+
+    for (const term of searchTerms) {
+        const tokens = term.toLowerCase().split(/\s+/).filter(t => t.length > 2 && !stopWordsSearch.has(t));
+        if (tokens.length === 0) continue;
+
+        for (const item of data) {
+            const searchableText = [
+                item['modelo/produto'] || '',
+                item['tags para busca (sinônimos)'] || '',
+                item['categoria'] || '',
+                item['marca'] || '',
+                item['características principais'] || ''
+            ].join(' ').toLowerCase();
+
+            let hits = 0;
+            for (const token of tokens) {
+                if (searchableText.includes(token)) hits++;
+            }
+
+            if (hits > 0) {
+                const uniqueKey = item['ean'] || item['código'] || item['codigo'] || item['modelo/produto'];
+                const existing = directMatchMap.get(uniqueKey);
+                if (!existing || hits > existing.tokenHits) {
+                    directMatchMap.set(uniqueKey, { item, tokenHits: hits, totalTokens: tokens.length });
+                }
+            }
+        }
+    }
+
+    const directMatches = Array.from(directMatchMap.values())
+        .sort((a, b) => {
+            const ratioA = a.tokenHits / a.totalTokens;
+            const ratioB = b.tokenHits / b.totalTokens;
+            if (ratioB !== ratioA) return ratioB - ratioA;
+            return b.tokenHits - a.tokenHits;
+        });
+
+    if (directMatches.length > 0) {
+        console.log(`[Google Sheets] 🔎 Busca Direta (Token Decomposition): ${directMatches.length} itens encontrados por substring.`);
+    }
+
+    // --- CAMADA 2: Fuse.js Fuzzy Search ---
     const options = {
         includeScore: true,
-        useExtendedSearch: true, // Habilitado para Token Search (AND Lógico)
-        threshold: 0.2, // Configuração rigorosa para evitar falsos matches
-        minMatchCharLength: 3, // Ignora matches em preposições (do, de, a)
+        useExtendedSearch: true,
+        threshold: 0.3, // Relaxado de 0.2 para capturar matches parciais (ex: "cano fogão")
+        minMatchCharLength: 3,
         ignoreLocation: true,
         keys: [
             { name: 'modelo/produto', weight: 2.0 },
@@ -171,24 +217,46 @@ async function searchProductInSheet(keywordsArray) {
     const fuse = new Fuse(data, options);
     let allResults = [];
 
-    // Busca iterativa: em vez de strings gigantes que diluem score, buscamos termo a termo
     for (const term of searchTerms) {
-        // Token Search (AND Lógico): Quebra a string por espaços para forçar match parcial em múltiplos tokens isolados ignorando a ordem
         const tokenizedTerm = term.trim().split(/\s+/).join(' ');
-
         const results = fuse.search(tokenizedTerm);
         allResults = allResults.concat(results);
     }
 
-    // Desduplicação de resultados exata pedida
-    const uniqueResults = Array.from(new Map(allResults.map(r => {
-        const uniqueKey = r.item['ean'] || r.item['código'] || r.item['codigo'] || r.item['modelo/produto'];
-        return [uniqueKey, r];
-    })).values());
+    // --- CAMADA 3: Fusão e Desduplicação ---
+    const mergedMap = new Map();
 
-    // Ordenação e Boosting de Exact Match
-    // Se a palavra procurada bater exatamente no início de um modelo/produto ou tag, aquele item sobe pro topo
+    // Matches diretos primeiro (prioridade alta)
+    for (const dm of directMatches) {
+        const uniqueKey = dm.item['ean'] || dm.item['código'] || dm.item['codigo'] || dm.item['modelo/produto'];
+        if (uniqueKey) {
+            mergedMap.set(uniqueKey, {
+                item: dm.item,
+                score: Math.max(0, 1 - (dm.tokenHits / dm.totalTokens)),
+                isDirectMatch: true,
+                tokenHits: dm.tokenHits
+            });
+        }
+    }
+
+    // Fuse.js depois (sem sobrescrever matches diretos)
+    for (const r of allResults) {
+        const uniqueKey = r.item['ean'] || r.item['código'] || r.item['codigo'] || r.item['modelo/produto'];
+        if (uniqueKey && !mergedMap.has(uniqueKey)) {
+            mergedMap.set(uniqueKey, { item: r.item, score: r.score, isDirectMatch: false, tokenHits: 0 });
+        }
+    }
+
+    const uniqueResults = Array.from(mergedMap.values());
+
     uniqueResults.sort((a, b) => {
+        // Prioridade 0: Matches diretos SEMPRE no topo
+        if (a.isDirectMatch && !b.isDirectMatch) return -1;
+        if (b.isDirectMatch && !a.isDirectMatch) return 1;
+        if (a.isDirectMatch && b.isDirectMatch) {
+            if (b.tokenHits !== a.tokenHits) return b.tokenHits - a.tokenHits;
+        }
+
         // Prioridade 1: Match numérico (EAN ou Código)
         const isA_CodeMatch = /^\d+$/.test(searchTerms[0]) && a.item['código'] && a.item['código'].toString().includes(searchTerms[0]);
         const isB_CodeMatch = /^\d+$/.test(searchTerms[0]) && b.item['código'] && b.item['código'].toString().includes(searchTerms[0]);
@@ -210,14 +278,13 @@ async function searchProductInSheet(keywordsArray) {
             if (isB_Boosted && !isA_Boosted) return 1;
         }
 
-        // Prioridade 3: Score padrão do Fuse.js
+        // Prioridade 3: Score
         return a.score - b.score;
     });
 
-    // Retorna no formato legado para compatibilidade: { item, matchCount }
     return uniqueResults.slice(0, 15).map(r => ({
         item: r.item,
-        matchCount: Math.round((1 - r.score) * 10) // Converte score invertido pra peso antigo
+        matchCount: r.isDirectMatch ? (r.tokenHits * 3) : Math.round((1 - r.score) * 10)
     }));
 }
 

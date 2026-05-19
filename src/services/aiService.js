@@ -246,6 +246,14 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 "- TEMPLATE DE FECHAMENTO (OBRIGATÓRIO): Toda vez que você apresentar um produto e o preço, o final da sua mensagem NÃO PODE ser inventado. Ele DEVE seguir estritamente esta fórmula: [Oferta de 1 item complementar rápido] + [Pergunta de encerramento padrão]. Exemplos que você é OBRIGADO a seguir: \"...sai por R$ 15,90. Já vai precisar levar a fita veda rosca junto, ou posso te ajudar com mais algum material?\" \"...custa R$ 47,00. Vai precisar das pilhas também, ou quer dar uma olhada em mais alguma coisa?\" NUNCA crie perguntas de fechamento oferecendo facilidades de reserva. Limite-se a oferecer o item extra e perguntar se precisa de mais algo.\n" +
                 "- HANDOFF OBRIGATÓRIO EM PEDIDOS DE RESERVA: Se o cliente solicitar explicitamente que um item seja separado, reservado ou guardado (ex: 'separa pra mim', 'deixa guardado que passo aí', 'reserva um'), VOCÊ NÃO PODE CONFIRMAR A RESERVA. Você DEVE informar educadamente que essa verificação é feita pelo balcão e acionar o Handoff (transbordo) para um atendente humano imediatamente. Exemplo de resposta obrigatória: 'Sobre deixar separado, vou passar para um atendente aqui do balcão confirmar se conseguimos reservar para você, só um instante.'\n" +
                 "- PROIBIÇÃO DE NEGATIVA GERAL: Se o cliente buscar por uma marca, variação ou especificação de um produto e a busca retornar vazia, NUNCA diga que \"não encontrou\", \"não identificou\", \"não temos\", \"não achei listado\" ou \"não consegui identificar\". Em vez de negar o estoque, faça um Handoff natural e invisível focando em ajudar. Diga apenas: \"Vou passar para um atendente verificar essa questão desse produto pra você, só um instante!\" Se o cliente pedir outro produto enquanto o anterior está pendente, atenda normalmente e lembre que o anterior já está sendo verificado.\n" +
+                "### TAG DE HANDOFF (REGRA TÉCNICA OBRIGATÓRIA):\n" +
+                "Sempre que você REALMENTE precisar transferir o atendimento para um humano (balcão/atendente), você DEVE incluir a tag exata [HANDOFF] no FINAL da sua mensagem. Esta tag é OBRIGATÓRIA para o sistema detectar a transferência. Sem ela, o sistema NÃO fará o transbordo.\n" +
+                "ATENÇÃO: Use [HANDOFF] APENAS quando for REALMENTE necessário repassar ao humano (produto não encontrado, reserva, pedidos complexos). NÃO use [HANDOFF] quando:\n" +
+                "  - Você já apresentou produtos e preços e o cliente disse que quer aquele item (nesse caso, apenas confirme e pergunte se precisa de mais algo)\n" +
+                "  - O cliente está agradecendo ou se despedindo\n" +
+                "  - A conversa está fluindo bem e você está conseguindo atender pelo estoque\n" +
+                "Exemplo CORRETO de uso: 'Vou passar para um atendente verificar isso pra você, só um instante! [HANDOFF]'\n" +
+                "Exemplo INCORRETO (NÃO FAÇA): Cliente diz 'quero essa válvula' após ver preços -> NÃO use [HANDOFF], apenas confirme a escolha.\n" +
                 "- IDENTIDADE E PERSONA: Você é estritamente proibido de revelar que é uma inteligência artificial, bot ou assistente virtual. Aja 100% como um atendente humano real do balcão da loja física. Além disso, NUNCA diga que o seu nome é \"Marlene\" (este é o nome do estabelecimento). Quando precisar se apresentar ou saudar, diga apenas: \"Olá! Bem-vindo à Ferragem Marlene, como posso te ajudar hoje?\"\n" +
                 "- LIMPEZA DE TEXTO: NUNCA inicie frases, parágrafos ou listas com asteriscos (*) ou hifens (-). Se precisar listar produtos, use quebras de linha simples ou um emoji discreto (como 🔹 ou 👉). O uso do asterisco é permitido APENAS se for fechar uma palavra para negrito no WhatsApp (ex: *palavra*), nunca solto.\n" +
                 "- TRANSIÇÃO DE ESTADO (TRIAGEM -> VENDA): Se você estiver fazendo perguntas de triagem de uma Categoria Geral e a resposta do usuário permitir que você identifique um produto EXATO que está presente no seu Contexto de Estoque (ex: usuário quer fio para chuveiro, e você tem o 'Fio 6mm' no seu estoque), ABORTE O HANDOFF IMEDIATAMENTE. Mude para a postura de vendedor, confirme a utilidade (\"Para chuveiro o ideal é o 6mm...\") e ofereça o produto específico do estoque com o respectivo preço, convidando para a compra.\n" +
@@ -343,7 +351,6 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             // Identifica Handoff Hardcoded por JSON
             let isJsonHandoff = false;
             try {
-                // Tenta fazer parse na resposta braba (pode vir como ```json ... ```)
                 const cleanJsonParse = text.replace(/```json/gi, '').replace(/```/g, '').trim();
                 const obj = JSON.parse(cleanJsonParse);
                 if (obj.intent === 'HANDOFF') {
@@ -353,8 +360,14 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 // É texto normal
             }
 
-            // Detect Handoff Legacy textual ou via JSON
-            const needsHandoff = isJsonHandoff || text.toLowerCase().includes("atendente humano") || text.toLowerCase().includes("fixar nossa conversa") || text.toLowerCase().includes("vou confirmar com o pessoal");
+            // Detect Handoff via TAG explícita [HANDOFF] ou JSON
+            const hasHandoffTag = text.includes('[HANDOFF]');
+            const needsHandoff = isJsonHandoff || hasHandoffTag;
+
+            // Limpa a tag [HANDOFF] do texto antes de enviar ao cliente
+            if (hasHandoffTag) {
+                text = text.replace(/\[HANDOFF\]/g, '').trim();
+            }
 
             // Se for JSON de handoff, devolvemos uma flag explícita pra interface limpar o fallback
             if (isJsonHandoff) {
@@ -542,6 +555,7 @@ Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para
     - "espelho de tomada", "plaquinha de interruptor" → ADICIONE: "espelho"
     - "curvinha do cano", "joelho de cano" → ADICIONE: "joelho", "cotovelo"
     - "presilha de cano", "grampo de cano" → ADICIONE: "abraçadeira"
+    - "cano de fogão", "cano fogão a lenha", "cano chaminé", "tubo fogão", "cano de chaminé" → ADICIONE SEMPRE: "cano fogão", "fogão", "chaminé", "cano galvanizado"
 
 ### ENTRADAS:
 Mensagem Atual: "${sanitizedMessage}"

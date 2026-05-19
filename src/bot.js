@@ -839,10 +839,11 @@ async function setupEvents() {
                 if (userMessageQueues.has(jid)) {
                     console.log(`[Debounce - Abortando Reação] Cliente enviou mensagem enquanto a IA gerava a resposta. Cancelando envio e re-escalonando fila consolidada.`);
 
-                    // Coloca de volta na fila original (junto com a mensagem nova) os itens que processamos
-                    userMessageQueues.get(jid).unshift(...queue);
+                    // NÃO re-empilha os itens já processados (queue). Apenas as novas mensagens
+                    // que chegaram durante o processamento já estão na fila e serão processadas
+                    // pelo próximo ciclo do debounce timer.
 
-                    // Aborta! O botNão escreve no banco, não manda pro WhatsApp.
+                    // Aborta! O bot não escreve no banco, não manda pro WhatsApp.
                     return;
                 }
 
@@ -937,8 +938,9 @@ async function setupEvents() {
                 }
 
                 // B) Human Handoff (Bloqueia repasse imediato se foi detectada a Triagem de Categorias Gerais)
-                let isTriageActive = false; // Add variable definition here to prevent scope issues
+                let isTriageActive = false;
                 if (response.needsHandoff && !isTriageActive) {
+                    // Limpa timer de inatividade para NÃO enviar "Há algo mais..." após handoff
                     if (interactionTimeouts.has(jid)) {
                         clearTimeout(interactionTimeouts.get(jid));
                         interactionTimeouts.delete(jid);
@@ -950,8 +952,7 @@ async function setupEvents() {
                 }
 
                 // E) Set Inactivity Follow-up
-                const isConversationEnd = combinedText.toLowerCase().includes('obrigado') ||
-                    combinedText.toLowerCase().includes('valeu') || combinedText.toLowerCase().includes('tchau');
+                const isConversationEnd = /obrigad[oa]|valeu|tchau|até mais|até logo|agradeço|flw|falou|abraço|beleza|tmj|\ud83d\udc4d|\ud83d\ude4f|\ud83d\ude0a/i.test(combinedText);
 
                 if (isConversationEnd) {
                     // Morte ao Zombie Follow-up: Limpa o timer rigidamente em conversas finalizadas organicamente
@@ -972,11 +973,16 @@ async function setupEvents() {
                     if (!alreadyAskedFollowUp) {
                         const timeoutId = setTimeout(async () => {
                             if (!sock) return;
+                            // PROTEÇÃO CRÍTICA: Não enviar follow-up se o chat está em handoff
+                            if (userPausedStates.has(jid)) {
+                                console.log(`[Inatividade] Chat ${headers} em handoff. Cancelando follow-up.`);
+                                interactionTimeouts.delete(jid);
+                                return;
+                            }
                             try {
                                 const sentMsg = await sock.sendMessage(jid, { text: "Há algo mais em que eu possa te ajudar?" });
                                 if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
 
-                                // Opcional: salvar no DB para contar também
                                 await prisma.chatHistory.create({
                                     data: { phoneNumber: headers, role: 'model', content: "Há algo mais em que eu possa te ajudar?" }
                                 });
