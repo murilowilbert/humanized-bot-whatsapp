@@ -151,9 +151,55 @@ async function searchProductInSheet(keywordsArray) {
     const directMatchMap = new Map();
     const stopWordsSearch = new Set(['de', 'da', 'do', 'para', 'pra', 'pro', 'a', 'o', 'em', 'com', 'sem', 'à', 'um', 'uma', 'e', 'ou']);
 
+    // Helper: Gera variações de medidas para cobrir formatos diferentes na planilha
+    // Ex: "2,5mm" → ["2,5mm", "2.5mm", "2,5", "2.5", "1x2,5mm", "1x2.5mm", "1x2,5", "1x2.5"]
+    function expandMeasurementToken(token) {
+        const variations = [token];
+        // Detecta padrão de medida com vírgula decimal (ex: "2,5mm", "10,5")
+        const measureMatch = token.match(/^(\d+),(\d+)(mm|cm|m|w|v)?$/i);
+        if (measureMatch) {
+            const [, intPart, decPart, unit] = measureMatch;
+            const u = unit || '';
+            // Variações com ponto
+            variations.push(`${intPart}.${decPart}${u}`);
+            // Sem unidade
+            if (u) {
+                variations.push(`${intPart},${decPart}`);
+                variations.push(`${intPart}.${decPart}`);
+            }
+            // Formato 1xN (comum em fios/cabos: "1x2,5mm")
+            variations.push(`1x${intPart},${decPart}${u}`);
+            variations.push(`1x${intPart}.${decPart}${u}`);
+            if (u) {
+                variations.push(`1x${intPart},${decPart}`);
+                variations.push(`1x${intPart}.${decPart}`);
+            }
+        }
+        // Detecta padrão de medida com ponto decimal (ex: "2.5mm")
+        const measureMatchDot = token.match(/^(\d+)\.(\d+)(mm|cm|m|w|v)?$/i);
+        if (measureMatchDot && !measureMatch) {
+            const [, intPart, decPart, unit] = measureMatchDot;
+            const u = unit || '';
+            variations.push(`${intPart},${decPart}${u}`);
+            if (u) {
+                variations.push(`${intPart},${decPart}`);
+                variations.push(`${intPart}.${decPart}`);
+            }
+            variations.push(`1x${intPart},${decPart}${u}`);
+            variations.push(`1x${intPart}.${decPart}${u}`);
+        }
+        return [...new Set(variations)]; // Deduplica
+    }
+
     for (const term of searchTerms) {
-        const tokens = term.toLowerCase().split(/\s+/).filter(t => t.length > 2 && !stopWordsSearch.has(t));
+        let tokens = term.toLowerCase().split(/\s+/).filter(t => t.length > 2 && !stopWordsSearch.has(t));
         if (tokens.length === 0) continue;
+
+        // Expande tokens de medida com variações
+        const expandedTokens = [];
+        for (const t of tokens) {
+            expandedTokens.push(...expandMeasurementToken(t));
+        }
 
         for (const item of data) {
             const searchableText = [
@@ -164,11 +210,15 @@ async function searchProductInSheet(keywordsArray) {
                 item['características principais'] || ''
             ].join(' ').toLowerCase();
 
+            // Normaliza o texto de busca substituindo vírgulas por pontos para matching bidirecional
+            const normalizedSearchable = searchableText.replace(/(\d),(\d)/g, '$1.$2');
+
             let hits = 0;
-            for (const token of tokens) {
-                if (searchableText.includes(token)) hits++;
+            for (const token of expandedTokens) {
+                if (searchableText.includes(token) || normalizedSearchable.includes(token)) hits++;
             }
 
+            // Conta hits baseados nos tokens ORIGINAIS (não expandidos) para o ratio
             if (hits > 0) {
                 const uniqueKey = item['ean'] || item['código'] || item['codigo'] || item['modelo/produto'];
                 const existing = directMatchMap.get(uniqueKey);
@@ -178,6 +228,7 @@ async function searchProductInSheet(keywordsArray) {
             }
         }
     }
+
 
     const directMatches = Array.from(directMatchMap.values())
         .sort((a, b) => {
