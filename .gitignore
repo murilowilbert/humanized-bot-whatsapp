@@ -10,3 +10,4 @@ auth_info_baileys/
 dev.db
 *.db
 *.sqlite
+data/paused_states.json
