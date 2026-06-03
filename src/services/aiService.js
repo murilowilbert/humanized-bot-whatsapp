@@ -438,7 +438,24 @@ async function extractImageKeywords(imageParts, textContent) {
     if (!imageParts || imageParts.length === 0) return textContent;
     try {
         const parts = [
-            { text: `Aja como um assistente de ferragem. O cliente mandou fotos no WhatsApp com a legenda/mensagem: "${textContent || 'Nenhuma legenda'}". \n\nTAREFA 1: Extraia UMA DESCRIÇÃO NEUTRA das características físicas primárias do que está nas imagens (ex: 'chuveiro eletrico branco', 'cano de pvc').\n\nTAREFA 2: Analise a legenda. Se a legenda for genérica (ex: 'tem esse?', 'quanto custa', 'olha isso', 'esse aqui'), IGNORE o texto do usuário e retorne APENAS a descrição física gerada na Tarefa 1. Se a legenda for ESPECÍFICA contendo metragens, tamanhos ou detalhes complementares (ex: 'tem desse de 150mm?', 'cabo igual esse de 5mm'), CONCATENE a descrição física com a informação útil (ex: 'cabo de cobre 5mm', 'tubo pvc 150mm').\n\nREGRA RESTRITA: Retorne APENAS O TEXTO FINAL de busca, sem explicações, sem aspas, numa única linha. PROIBIDO CHUTAR MARCAS OU LINHAS COMERCIAIS se o texto da marca não estiver 100% legível na embalagem do produto.` }
+            { text: `Você é um assistente de uma loja de ferragem e materiais de construção. O cliente mandou fotos no WhatsApp com a legenda/mensagem: "${textContent || 'Nenhuma legenda'}".
+
+REGRA DE OURO (PRIORIDADE ABSOLUTA — NÃO VIOLE):
+A legenda do cliente é a FONTE DE VERDADE sobre o que ele quer. Se a legenda contiver um SUBSTANTIVO DE PRODUTO (ex: "mangueira", "cano", "torneira", "chuveiro", "fio", "parafuso", "válvula", etc.), esse substantivo é SAGRADO e DEVE aparecer obrigatoriamente no resultado final. Você NUNCA pode substituí-lo por outro produto baseando-se na aparência visual. A imagem pode parecer um "fio elétrico", mas se o cliente escreveu "mangueira", ele sabe o que é — e o resultado DEVE conter "mangueira".
+
+TAREFA (siga nesta ordem estrita):
+
+PASSO 1 — EXTRAIR DA LEGENDA: Identifique se a legenda contém substantivos de produto (nomes de itens reais de ferragem/construção). Exemplos: mangueira, cano, fio, cabo, torneira, chuveiro, registro, válvula, conector, abraçadeira, parafuso, prego, etc. Extraia também qualquer medida/tamanho mencionado (ex: 6mm, 1/2", 3m).
+
+PASSO 2 — CLASSIFICAR A LEGENDA:
+  a) LEGENDA COM PRODUTO: Se a legenda contém pelo menos UM substantivo de produto (ex: "Tem essa mangueira de 6mm?", "Preciso desse registro", "Quanto custa esse cano?"), o substantivo do produto é OBRIGATÓRIO no resultado. Use a imagem APENAS para extrair atributos COMPLEMENTARES (cor, material, formato) que não estejam na legenda.
+  b) LEGENDA GENÉRICA: Se a legenda contém APENAS frases genéricas SEM substantivo de produto (ex: "Tem esse?", "Quanto custa?", "Olha isso", "Esse aqui"), aí sim use a análise visual da imagem para identificar o produto.
+
+PASSO 3 — MONTAR RESULTADO:
+  - Para legenda COM produto: [substantivo da legenda] + [medida da legenda se houver] + [atributos visuais complementares: cor, material]. Exemplo: legenda "Tem essa mangueira de 6mm?" + imagem mostra item azul → resultado: "mangueira 6mm azul"
+  - Para legenda GENÉRICA: Use a descrição visual do produto. Exemplo: legenda "Tem esse?" + imagem de chuveiro branco → resultado: "chuveiro elétrico branco"
+
+REGRA RESTRITA: Retorne APENAS O TEXTO FINAL de busca, sem explicações, sem aspas, numa única linha. PROIBIDO CHUTAR MARCAS OU LINHAS COMERCIAIS se o texto da marca não estiver 100% legível na embalagem do produto.` }
         ];
         for (const img of imageParts) {
             parts.push(img);
@@ -451,7 +468,7 @@ async function extractImageKeywords(imageParts, textContent) {
                     parts: parts
                 }
             ],
-            systemInstruction: { parts: [{ text: "Você é um extrator semântico cirúrgico. Você junta imagens com intenções textuais criando queries de banco de dados extremamente curtas." }] }
+            systemInstruction: { parts: [{ text: "Você é um extrator semântico cirúrgico de uma loja de ferragem. A LEGENDA DO CLIENTE TEM PRIORIDADE ABSOLUTA sobre a análise visual. Nunca contradiga o substantivo de produto que o cliente escreveu. Gere queries de busca curtas e precisas." }] }
         });
         const unificado = result.response.text().trim();
         console.log(`[AI Vision Inteligente] Resultado da fusão Imagem + Texto: "${unificado}"`);
