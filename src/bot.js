@@ -33,6 +33,44 @@ const botSentMessageIds = new Set(); // Rastreamento de mensagens enviadas pelo 
 let sock = null;
 let initialized = false;
 
+// --- Persistência de Estados de Pausa (Sobrevive a reinícios) ---
+const PAUSED_STATES_FILE = path.join(__dirname, '../data/paused_states.json');
+
+function savePausedStatesToDisk() {
+    try {
+        const obj = {};
+        for (const [key, value] of userPausedStates.entries()) {
+            obj[key] = value;
+        }
+        fs.writeFileSync(PAUSED_STATES_FILE, JSON.stringify(obj, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[Persistência] Erro ao salvar paused_states.json:', e.message);
+    }
+}
+
+function loadPausedStatesFromDisk() {
+    try {
+        if (!fs.existsSync(PAUSED_STATES_FILE)) return;
+        const raw = fs.readFileSync(PAUSED_STATES_FILE, 'utf8');
+        const obj = JSON.parse(raw);
+        const now = Date.now();
+        let loaded = 0;
+        let expired = 0;
+        for (const [key, timestamp] of Object.entries(obj)) {
+            // Só carrega se ainda estiver dentro do TTL de 12h
+            if (now - timestamp < 43200000) {
+                userPausedStates.set(key, timestamp);
+                loaded++;
+            } else {
+                expired++;
+            }
+        }
+        console.log(`[Persistência] Estados de pausa carregados do disco: ${loaded} ativos, ${expired} expirados (descartados).`);
+    } catch (e) {
+        console.error('[Persistência] Erro ao carregar paused_states.json:', e.message);
+    }
+}
+
 
 
 function getBrazilDateString() {
@@ -248,6 +286,7 @@ async function setupEvents() {
             if (myMsg.trim() === '!bot') {
                 userPausedStates.delete(rawJid);
                 mutedUsers.delete(rawJid);
+                savePausedStatesToDisk();
                 console.log(`[Manual Override] Atendente soltou a trava (!bot) para ${cleanIdFromMe}`);
                 // Não envia confirmação para evitar auto-trigger do bot em si
                 return;
@@ -259,7 +298,20 @@ async function setupEvents() {
                 if (!userPausedStates.has(rawJid)) {
                     console.log(`[Handoff Auto-Pause] Mensagem humana REAL detectada (fromMe) para ${cleanIdFromMe}. Bot silenciado por 12h.`);
                     userPausedStates.set(rawJid, Date.now());
+                    savePausedStatesToDisk(); // Persiste no disco para sobreviver a reinícios
                     metricsService.incrementHandoff();
+                }
+
+                // Salva a mensagem humana no histórico do DB para a IA ter contexto
+                // (Sem isso, quando o bot reinicia, a IA não sabe que Murilo já estava atendendo)
+                try {
+                    const headersFromMe = normalizeJid(rawJid) || cleanIdFromMe;
+                    await prisma.chatHistory.create({
+                        data: { phoneNumber: headersFromMe, role: 'model', content: myMsg.trim() }
+                    });
+                    console.log(`[Histórico] Mensagem humana (fromMe) salva no DB para ${cleanIdFromMe}: "${myMsg.trim().substring(0, 50)}..."`);
+                } catch (dbErr) {
+                    console.error('[Histórico] Erro ao salvar mensagem fromMe no DB:', dbErr.message);
                 }
             }
 
@@ -310,6 +362,7 @@ async function setupEvents() {
             console.log(`[Global Override] Comando Reiniciar detectado por ${headers}. Limpando estados...`);
             userSessions.delete(jid);
             userPausedStates.delete(jid);
+            savePausedStatesToDisk();
             userIsProcessing.delete(jid);
 
             if (userMessageQueues.has(jid)) userMessageQueues.delete(jid);
@@ -338,6 +391,7 @@ async function setupEvents() {
             // Permanece mudo por 12 horas (12 * 60 * 60 * 1000 = 43200000)
             if (nowTime - pausedTimestamp > 43200000) {
                 userPausedStates.delete(jid);
+                savePausedStatesToDisk();
                 console.log(`[Handoff Mute] TTL 12h Vencido. Travas liberadas para ${headers}`);
             } else {
                 console.log(`[Handoff Mute] Ignorando mensagem de ${pushname} (${headers})`);
@@ -429,6 +483,7 @@ async function setupEvents() {
             await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: docMsg } });
 
             userPausedStates.set(jid, Date.now());
+            savePausedStatesToDisk();
             metricsService.incrementHandoff();
             if (server.addHandoff) server.addHandoff({ phone: headers, reason: "Análise de Documento" });
             return; // Aborta fluxo e impede travamento no LLM
@@ -824,6 +879,7 @@ async function setupEvents() {
                     await prisma.chatHistory.create({ data: { phoneNumber: headers, role: 'model', content: fallbackPardonMsg } });
 
                     userPausedStates.set(jid, Date.now());
+                    savePausedStatesToDisk();
                     metricsService.incrementHandoff();
                     if (server.addHandoff) server.addHandoff({ phone: headers, reason: "Falha/Timeout API" });
 
@@ -946,6 +1002,7 @@ async function setupEvents() {
                         interactionTimeouts.delete(jid);
                     }
                     userPausedStates.set(jid, Date.now());
+                    savePausedStatesToDisk();
                     metricsService.incrementHandoff();
                     if (server.addHandoff) server.addHandoff({ phone: headers, reason: "Transbordo AI" });
                     return; // Encerra o fluxo aqui para não iniciar timer de inatividade
@@ -1025,6 +1082,9 @@ async function initialize() {
     if (initialized) return;
 
     try {
+        // Restaura estados de pausa do disco (sobrevive a reinícios)
+        loadPausedStatesFromDisk();
+
         console.log("[Boot] Iniciando aquecimento de Caches (Google Sheets)...");
         await googleSheetsService.getCachedSheetData();
         await googleSheetsService.getCachedCategoryData();
