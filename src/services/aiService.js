@@ -127,6 +127,7 @@ const SPECIFIC_RULES = "### REGRAS ESPECIAIS:\n" +
     "- LIMPEZA: NUNCA inicie frases com * ou -. Para listas use quebras de linha ou emojis discretos (🔹, 👉).\n" +
     "- TRANSIÇÃO TRIAGEM→VENDA: Se durante triagem identificar produto EXATO no estoque, ABORTE handoff e venda diretamente.\n" +
     "- PERGUNTAS RECOMENDADAS: Cruze com histórico (não repita info já dada). Máx 1-2 perguntas curtas. Objetivo: coletar detalhes antes do handoff.\n" +
+    "- OBRIGATORIEDADE DE TRIAGEM: Se houver uma CATEGORIA DE TRIAGEM DISPONÍVEL no contexto, você DEVE enviar a pergunta de triagem recomendada. É expressamente PROIBIDO fazer o handoff direto sem fazer a pergunta de triagem antes neste caso. A triagem serve para coletar informações para o atendente.\n" +
     "- FONÉTICA: 'acento'='assento', 'xave'='chave'. Corrija silenciosamente sem mencionar erro.\n" +
     "- PRECIFICAÇÃO: PROIBIDO inventar/deduzir preços fora do contexto.\n" +
     "- MÚLTIPLOS ITENS PARCIAIS: Apresente encontrados com preço/foto. Para não encontrados, diga que vai verificar. NUNCA faça handoff total se achou itens parciais.";
@@ -163,16 +164,28 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             // Detecta se os itens no contexto são SUGESTÕES (busca relaxada) ou matches exatos
             const hasSuggestionItems = stockContext.length > 0 && stockContext.some(item => item._isSuggestion === true);
 
-            let stockInfoText;
+            let stockInfoText = "";
             const slimStock = slimStockContext(stockContext);
-            if (stockContext.length > 0 && hasSuggestionItems) {
-                stockInfoText = "### PRODUTOS SIMILARES (SUGESTÃO):\n" +
-                    "Produto EXATO não encontrado. Itens abaixo são similares. Apresente 2-3 opções com preço naturalmente, sem dizer 'não temos'. Se nenhum servir, faça handoff.\n\n" +
-                    JSON.stringify(slimStock);
-            } else if (stockContext.length > 0) {
-                stockInfoText = "### ESTOQUE ATUALIZADO:\n" + JSON.stringify(slimStock);
-            } else {
-                stockInfoText = isFullStockEnabled
+            const categoryItems = slimStock.filter(item => item.perguntas_recomendadas && !item.código);
+            const productItems = slimStock.filter(item => !item.perguntas_recomendadas || item.código);
+
+            if (categoryItems.length > 0) {
+                stockInfoText += "### CATEGORIA DE TRIAGEM DISPONÍVEL (OBRIGATÓRIO PERGUNTAR):\n" +
+                    "O cliente está buscando sobre um assunto geral/categoria. Você deve fazer a pergunta de triagem recomendada abaixo para qualificar o atendimento antes de transferir para o balcão. NUNCA faça Handoff direto sem fazer essa pergunta antes.\n" +
+                    "Você deve naturalizar esta pergunta recomendada para o cliente:\n" +
+                    JSON.stringify(categoryItems) + "\n\n";
+            }
+
+            if (productItems.length > 0) {
+                if (hasSuggestionItems) {
+                    stockInfoText += "### PRODUTOS SIMILARES (SUGESTÃO):\n" +
+                        "Produto EXATO não encontrado. Itens abaixo são similares. Apresente 2-3 opções com preço naturalmente, sem dizer 'não temos'. Se nenhum servir, faça handoff.\n\n" +
+                        JSON.stringify(productItems);
+                } else {
+                    stockInfoText += "### ESTOQUE ATUALIZADO:\n" + JSON.stringify(productItems);
+                }
+            } else if (categoryItems.length === 0) {
+                stockInfoText += isFullStockEnabled
                     ? "### ESTOQUE VAZIO: Aja como vendedor físico. Diga 'Vou verificar com o pessoal' e acione [HANDOFF]. PROIBIDO: 'não encontrei', 'não temos', 'sistema', 'base'."
                     : "### ESTOQUE VAZIO: Transfira para atendente humano. Diga que vai pedir pro balcão verificar. PROIBIDO negar existência do produto. Acione [HANDOFF].";
             }

@@ -148,6 +148,9 @@ async function sendHumanLikeResponse(jid, text) {
         let part = parts[i].trim();
         if (!part) continue;
 
+        // Limpa asterisco/hífen de lista no início da linha por emoji de seta (👉)
+        part = part.replace(/^[-*]\s+/g, '👉 ');
+
         const regexCodGlobal = /(?:\[|\{\{)\s*(?:COD|FOTO):\s*([\w-]+)\s*(?:\]|\}\})/gi;
         const codMatches = Array.from(part.matchAll(regexCodGlobal));
         const extractedCodes = codMatches.map(m => m[1]);
