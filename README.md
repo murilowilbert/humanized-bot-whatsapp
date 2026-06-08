@@ -471,5 +471,5 @@ Este projeto é de uso privado da **Ferragem Marlene** — Igrejinha/RS.
 ---
 
 <p align="center">
-  Feito com 🔩 por <strong>Murilo Wilbert</strong> — Ferragem Marlene, Igrejinha/RS
+  Feito com 🔩 por <strong>Murilo Wilbert</strong> — Ferragem Marlene, Igrejinha/RS (Otimizado em Junho/2026)
 </p>
