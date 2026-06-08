@@ -52,20 +52,55 @@ function slimStockContext(items) {
     if (!items || items.length === 0) return [];
     return items.map(item => {
         const slim = {};
-        // Campos essenciais para a IA responder
-        if (item['código'] || item['codigo']) slim['código'] = item['código'] || item['codigo'];
-        if (item['modelo/produto']) slim['modelo/produto'] = item['modelo/produto'];
-        if (item['Produto']) slim['modelo/produto'] = item['Produto'];
-        if (item['preço'] !== undefined) slim['preço'] = item['preço'];
-        if (item['Preco'] !== undefined) slim['preço'] = item['Preco'];
-        if (item['estoque'] !== undefined) slim['estoque'] = item['estoque'];
-        if (item['Estoque'] !== undefined) slim['estoque'] = item['Estoque'];
-        if (item['características principais']) slim['características'] = item['características principais'];
-        if (item['categoria_geral']) slim['categoria_geral'] = item['categoria_geral'];
-        if (item['perguntas_recomendadas'] || item['Perguntas_Recomendadas']) {
-            slim['perguntas_recomendadas'] = item['perguntas_recomendadas'] || item['Perguntas_Recomendadas'];
+        
+        // Find price key (containing 'preço' or 'preco')
+        const priceKey = Object.keys(item).find(k => k.toLowerCase().includes('preço') || k.toLowerCase().includes('preco'));
+        if (priceKey && item[priceKey] !== undefined && item[priceKey] !== '') {
+            slim['preço'] = item[priceKey];
         }
-        if (item['potência/voltagem']) slim['potência'] = item['potência/voltagem'];
+
+        // Find product name key (containing 'produto' or matching 'modelo')
+        const productKey = Object.keys(item).find(k => k.toLowerCase().includes('produto') || k.toLowerCase() === 'modelo');
+        if (productKey && item[productKey] !== undefined && item[productKey] !== '') {
+            slim['modelo/produto'] = item[productKey];
+        }
+
+        // Find code / EAN key (containing 'código', 'codigo' or matching 'ean')
+        const codeKey = Object.keys(item).find(k => k.toLowerCase().includes('código') || k.toLowerCase().includes('codigo') || k.toLowerCase() === 'ean');
+        if (codeKey && item[codeKey] !== undefined && item[codeKey] !== '') {
+            slim['código'] = item[codeKey];
+        }
+
+        // Find stock / quantity key (containing 'estoque' or matching 'qtd')
+        const stockKey = Object.keys(item).find(k => k.toLowerCase().includes('estoque') || k.toLowerCase() === 'qtd');
+        if (stockKey && item[stockKey] !== undefined && item[stockKey] !== '') {
+            slim['estoque'] = item[stockKey];
+        }
+
+        // Find characteristics key (containing 'característica' or 'caracteristica')
+        const charKey = Object.keys(item).find(k => k.toLowerCase().includes('característica') || k.toLowerCase().includes('caracteristica'));
+        if (charKey && item[charKey] !== undefined && item[charKey] !== '') {
+            slim['características'] = item[charKey];
+        }
+
+        // Find general category key
+        const catKey = Object.keys(item).find(k => k.toLowerCase().includes('categoria_geral') || k.toLowerCase() === 'categoria');
+        if (catKey && item[catKey] !== undefined && item[catKey] !== '') {
+            slim['categoria_geral'] = item[catKey];
+        }
+
+        // Find recommended questions
+        const reqKey = Object.keys(item).find(k => k.toLowerCase().includes('perguntas_recomendadas') || k.toLowerCase().includes('perguntas recomendadas'));
+        if (reqKey && item[reqKey] !== undefined && item[reqKey] !== '') {
+            slim['perguntas_recomendadas'] = item[reqKey];
+        }
+
+        // Find power / voltage key
+        const powerKey = Object.keys(item).find(k => k.toLowerCase().includes('potên') || k.toLowerCase().includes('poten') || k.toLowerCase().includes('voltag'));
+        if (powerKey && item[powerKey] !== undefined && item[powerKey] !== '') {
+            slim['potência'] = item[powerKey];
+        }
+
         if (item['_isSuggestion']) slim['_isSuggestion'] = true;
         return slim;
     });
