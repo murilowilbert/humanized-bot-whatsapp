@@ -621,7 +621,7 @@ async function setupEvents() {
                 // (ela só será salva no DB após processamento bem-sucedido, mais abaixo)
                 chatsHistory.push({ role: 'user', content: combinedText.trim() });
                 
-                while (chatsHistory.length > 20) {
+                while (chatsHistory.length > 14) {
                     chatsHistory.shift();
                 }
 

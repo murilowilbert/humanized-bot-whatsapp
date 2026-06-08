@@ -6,6 +6,97 @@ const path = require('path');
 
 const model = genAI.getGenerativeModel(modelConfig);
 
+// === CACHE LAYER (Otimização: evita leitura de disco a cada mensagem) ===
+let _cachedStoreInfo = null;
+let _cachedStoreInfoTime = 0;
+let _cachedExceptions = null;
+let _cachedExceptionsTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
+function getCachedStoreInfo() {
+    const now = Date.now();
+    if (_cachedStoreInfo && (now - _cachedStoreInfoTime < CACHE_TTL)) return _cachedStoreInfo;
+    try {
+        _cachedStoreInfo = fs.readFileSync(path.join(__dirname, '../../data/store_info.md'), 'utf8');
+        _cachedStoreInfoTime = now;
+    } catch (e) {
+        console.error("Erro ao ler store_info.md:", e);
+        _cachedStoreInfo = _cachedStoreInfo || "";
+    }
+    return _cachedStoreInfo;
+}
+
+function getCachedExceptions() {
+    const now = Date.now();
+    if (_cachedExceptions && (now - _cachedExceptionsTime < CACHE_TTL)) return _cachedExceptions;
+    try {
+        const exceptionsPath = path.join(__dirname, '../../data/store_exceptions.json');
+        if (fs.existsSync(exceptionsPath)) {
+            _cachedExceptions = JSON.parse(fs.readFileSync(exceptionsPath, 'utf8'));
+        } else {
+            _cachedExceptions = [];
+        }
+        _cachedExceptionsTime = now;
+    } catch (e) {
+        console.error("[Cache] Erro ao ler store_exceptions.json:", e);
+        _cachedExceptions = _cachedExceptions || [];
+    }
+    return _cachedExceptions;
+}
+
+/**
+ * Enxuga o JSON de estoque para enviar apenas campos essenciais à IA.
+ * Reduz ~40% dos tokens de input por produto.
+ */
+function slimStockContext(items) {
+    if (!items || items.length === 0) return [];
+    return items.map(item => {
+        const slim = {};
+        // Campos essenciais para a IA responder
+        if (item['código'] || item['codigo']) slim['código'] = item['código'] || item['codigo'];
+        if (item['modelo/produto']) slim['modelo/produto'] = item['modelo/produto'];
+        if (item['Produto']) slim['modelo/produto'] = item['Produto'];
+        if (item['preço'] !== undefined) slim['preço'] = item['preço'];
+        if (item['Preco'] !== undefined) slim['preço'] = item['Preco'];
+        if (item['estoque'] !== undefined) slim['estoque'] = item['estoque'];
+        if (item['Estoque'] !== undefined) slim['estoque'] = item['Estoque'];
+        if (item['características principais']) slim['características'] = item['características principais'];
+        if (item['categoria_geral']) slim['categoria_geral'] = item['categoria_geral'];
+        if (item['perguntas_recomendadas'] || item['Perguntas_Recomendadas']) {
+            slim['perguntas_recomendadas'] = item['perguntas_recomendadas'] || item['Perguntas_Recomendadas'];
+        }
+        if (item['potência/voltagem']) slim['potência'] = item['potência/voltagem'];
+        if (item['_isSuggestion']) slim['_isSuggestion'] = true;
+        return slim;
+    });
+}
+
+// === CONSTANTES DE PROMPT COMPRIMIDAS (Otimização: evita recriação a cada chamada) ===
+const WHATSAPP_FORMATTING = "### FORMATAÇÃO WHATSAPP:\n" +
+    "Use *asteriscos* para negrito no WhatsApp (produtos, preços em R$, dias da semana).\n" +
+    "HUMANIZAÇÃO DE NOMES: NUNCA cite nomes técnicos ALL CAPS do estoque. Converta para Title Case legível.\n" +
+    "Ex: 'DUCHA OPTIMA ELETR. 7700W 220V ZAGONEL' → '*Ducha Zagonel Optima Eletrônica* (7700W)'. ALL CAPS = falha crítica.";
+
+const SPECIFIC_RULES = "### REGRAS ESPECIAIS:\n" +
+    "- ANTI-LOOP: Se você acabou de perguntar preferência e o cliente RESPONDEU, CRUZE a resposta com o estoque e ofereça 2-3 opções com preço. Proibido repetir pergunta genérica.\n" +
+    "- FOTOS DO CLIENTE: Aja naturalmente. PROIBIDO: 'Com base na foto', 'Analisando a imagem', 'O sistema identificou'. Vá direto ao ponto.\n" +
+    "- ZERO ALUCINAÇÃO: Contexto VAZIO = PROIBIDO mencionar qualquer marca/modelo/preço. Acione atendente humano.\n" +
+    "- TELE-ENTREGA: Responda 'Infelizmente ainda não possuímos tele-entrega 😕'.\n" +
+    "- LOCALIZAÇÃO: Envie endereço + tag [ACTION: SEND_LOCATION] no final.\n" +
+    "- CONCISÃO: >3 variações do mesmo produto → NÃO liste todas. Faça UMA pergunta de afunilamento.\n" +
+    "- HANDOFF INVISÍVEL: PROIBIDO: 'banco de dados', 'sistema', 'planilha', 'não localizei no sistema', 'não está listado', 'não consta'. Aja como vendedor físico: 'Vou confirmar com o pessoal do balcão'.\n" +
+    "- PROIBIÇÃO DE RESERVA: PROIBIDO usar 'separar', 'guardar', 'reservar'. Cliente pediu separar → Handoff pro balcão.\n" +
+    "- TEMPLATE FECHAMENTO: [Produto+preço] + [1 item complementar] + [pergunta se precisa de mais algo].\n" +
+    "- TAG [HANDOFF]: Inclua no FINAL da mensagem quando precisar transferir. SÓ use quando necessário (produto não encontrado, reserva). NÃO use em despedidas ou quando já apresentou produtos.\n" +
+    "- IDENTIDADE: PROIBIDO revelar que é IA/bot. Aja como atendente humano. NUNCA diga que seu nome é 'Marlene' (é o nome do estabelecimento).\n" +
+    "- LIMPEZA: NUNCA inicie frases com * ou -. Para listas use quebras de linha ou emojis discretos (🔹, 👉).\n" +
+    "- TRANSIÇÃO TRIAGEM→VENDA: Se durante triagem identificar produto EXATO no estoque, ABORTE handoff e venda diretamente.\n" +
+    "- PERGUNTAS RECOMENDADAS: Cruze com histórico (não repita info já dada). Máx 1-2 perguntas curtas. Objetivo: coletar detalhes antes do handoff.\n" +
+    "- FONÉTICA: 'acento'='assento', 'xave'='chave'. Corrija silenciosamente sem mencionar erro.\n" +
+    "- PRECIFICAÇÃO: PROIBIDO inventar/deduzir preços fora do contexto.\n" +
+    "- MÚLTIPLOS ITENS PARCIAIS: Apresente encontrados com preço/foto. Para não encontrados, diga que vai verificar. NUNCA faça handoff total se achou itens parciais.";
+
+
 /**
  * 
  *
@@ -22,26 +113,14 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
     const MAX_RETRIES = 5;
     let delay = 2000; // Start with 2 seconds
 
-    // Load store info once per request
-    let storeInfo = "";
-    try {
-        storeInfo = fs.readFileSync(path.join(__dirname, '../../data/store_info.md'), 'utf8');
-    } catch (e) {
-        console.error("Erro ao ler store_info.md:", e);
-    }
+    // Load store info from cache
+    const storeInfo = getCachedStoreInfo();
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             // Prepare context string
-            const whatsappFormattingInstruct = "### FORMATAÇÃO WHATSAPP:\nVocê DEVE usar a formatação do WhatsApp para destacar as partes importantes: use *asteriscos* para negrito (ex: *Martelo*). Use *negrito* sempre que for escrever valores em R$, nomes de produtos e dias da semana.\n\n" +
-                "### HUMANIZAÇÃO DE NOMES DE PRODUTOS (REGRA CRÍTICA - NÃO IGNORE):\n" +
-                "Você atua como um humano conversando no WhatsApp. NUNCA cite o nome técnico do estoque exatamente como está escrito (ex: TODO EM MAIÚSCULO, 'DUCHA OPTIMA ELETR. 7700W 220V ZAGONEL').\n" +
-                "Sempre converta o nome técnico para um Título Amigável (Title Case) e legível antes de enviá-lo para o cliente! Exemplos:\n" +
-                "- Invés de: 'DUCHA OPTIMA ELETR. 7700W 220V ZAGONEL'\n" +
-                "- Diga: '*Ducha Zagonel Optima Eletrônica* (7700W / 220V)'\n" +
-                "- Invés de: 'RES TORN ESSENCE 220V 5500W 3070A LORENZETTI'\n" +
-                "- Diga: '*Resistência p/ Torneira Lorenzetti Essence* (220V / 5500W)'\n" +
-                "Qualquer mensagem contendo ALL CAPS ou jargões puros do banco de dados resultará em falha crítica.";
+            // Usa constantes pré-computadas (Otimização: evita recriação a cada chamada)
+            const whatsappFormattingInstruct = WHATSAPP_FORMATTING;
 
             const server = require('../server/app');
             const isFullStockEnabled = server.isFullStockEnabled();
@@ -50,26 +129,17 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             const hasSuggestionItems = stockContext.length > 0 && stockContext.some(item => item._isSuggestion === true);
 
             let stockInfoText;
+            const slimStock = slimStockContext(stockContext);
             if (stockContext.length > 0 && hasSuggestionItems) {
-                // MODO SUGESTÃO: Não encontrou exato, mas encontrou itens similares
-                stockInfoText = "### PRODUTOS SIMILARES ENCONTRADOS (MODO SUGESTÃO):\n" +
-                    "O produto EXATO que o cliente pediu NÃO foi encontrado no nosso estoque. Porém, os itens abaixo são SIMILARES ou da mesma família/categoria e PODEM ser o que o cliente precisa.\n" +
-                    "VOCÊ DEVE:\n" +
-                    "1. NÃO dizer que 'não temos' ou 'não encontrei'. Em vez disso, apresente as alternativas de forma natural.\n" +
-                    "2. Dizer algo como: 'Olha, desse modelo específico não localizei, mas temos algumas opções que podem te atender:'\n" +
-                    "3. Apresentar 2-3 dos itens mais relevantes abaixo, explicando BREVEMENTE o que cada um faz e para que serve.\n" +
-                    "4. Perguntar se algum deles serve para o que o cliente precisa.\n" +
-                    "5. Se o cliente disser que nenhum serve, AÍ SIM faça o handoff para o balcão verificar.\n" +
-                    "6. IMPORTANTE: Mostre os preços dos itens sugeridos e use [COD: xxx] para fotos se disponíveis.\n\n" +
-                    JSON.stringify(stockContext, null, 2);
+                stockInfoText = "### PRODUTOS SIMILARES (SUGESTÃO):\n" +
+                    "Produto EXATO não encontrado. Itens abaixo são similares. Apresente 2-3 opções com preço naturalmente, sem dizer 'não temos'. Se nenhum servir, faça handoff.\n\n" +
+                    JSON.stringify(slimStock);
             } else if (stockContext.length > 0) {
-                // MODO NORMAL: Encontrou matches exatos
-                stockInfoText = "### ESTOQUE ATUALIZADO (Use estes dados para recomendar):\n" + JSON.stringify(stockContext, null, 2);
+                stockInfoText = "### ESTOQUE ATUALIZADO:\n" + JSON.stringify(slimStock);
             } else {
-                // MODO VAZIO: Nada encontrado
                 stockInfoText = isFullStockEnabled
-                    ? "### ESTOQUE: Nenhum item foi pré-selecionado para esta consulta. AÇÃO OBRIGATÓRIA: Aja como se você fosse pessoalmente verificar na prateleira da loja. Diga ao cliente algo como 'Vou verificar com o pessoal aqui se temos disponível, só um instante!' e acione [HANDOFF]. LISTA DE FRASES PROIBIDAS NESTE CENÁRIO: 'não encontrei', 'não localizei', 'não tenho no sistema', 'não está listado', 'não identificou', 'não temos', 'no meu sistema', 'na minha base'. Você NÃO SABE se o produto existe ou não na loja — você apenas vai pedir para alguém conferir."
-                    : "### ESTOQUE: Nenhum item disponível para esta consulta. AÇÃO OBRIGATÓRIA: Transfira para um atendente humano imediatamente. Diga APENAS que vai pedir para o pessoal do balcão verificar. É PROIBIDO negar a existência do produto ou mencionar 'sistema', 'base de dados' ou 'não encontrei'. Acione [HANDOFF].";
+                    ? "### ESTOQUE VAZIO: Aja como vendedor físico. Diga 'Vou verificar com o pessoal' e acione [HANDOFF]. PROIBIDO: 'não encontrei', 'não temos', 'sistema', 'base'."
+                    : "### ESTOQUE VAZIO: Transfira para atendente humano. Diga que vai pedir pro balcão verificar. PROIBIDO negar existência do produto. Acione [HANDOFF].";
             }
 
             const isFirstMessage = chatHistory.length <= 1; // includes current message
@@ -113,16 +183,13 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             let targetException = null;
 
             try {
-                const exceptionsPath = path.join(__dirname, '../../data/store_exceptions.json');
-                if (fs.existsSync(exceptionsPath)) {
-                    const storeExceptions = JSON.parse(fs.readFileSync(exceptionsPath, 'utf8'));
-                    targetException = storeExceptions.find(ex => ex.date === currentDateIso);
-                    if (targetException) {
-                        isExceptionDay = true;
-                    }
+                const storeExceptions = getCachedExceptions();
+                targetException = storeExceptions.find(ex => ex.date === currentDateIso);
+                if (targetException) {
+                    isExceptionDay = true;
                 }
             } catch (err) {
-                console.error("[Calendário de Exceções] Falha ao ler store_exceptions.json:", err);
+                console.error("[Calendário de Exceções] Falha ao processar exceções:", err);
             }
 
             if (isExceptionDay) {
@@ -206,64 +273,33 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
 
             // Injetar CALENDÁRIO DE EXCEÇÕES FUTURAS para a IA saber sobre feriados/datas especiais
             try {
-                const exceptionsPath2 = path.join(__dirname, '../../data/store_exceptions.json');
-                if (fs.existsSync(exceptionsPath2)) {
-                    const allExceptions = JSON.parse(fs.readFileSync(exceptionsPath2, 'utf8'));
-                    const todayMs = new Date(currentDateIso).getTime();
-                    const futureLimit = todayMs + (60 * 24 * 60 * 60 * 1000); // Próximos 60 dias
+                const allExceptions = getCachedExceptions();
+                const todayMs = new Date(currentDateIso).getTime();
+                const futureLimit = todayMs + (60 * 24 * 60 * 60 * 1000); // Próximos 60 dias
                     
-                    const upcomingExceptions = allExceptions.filter(ex => {
-                        const exMs = new Date(ex.date).getTime();
-                        return exMs >= todayMs && exMs <= futureLimit;
-                    });
+                const upcomingExceptions = allExceptions.filter(ex => {
+                    if (!ex.date) return false;
+                    const exMs = new Date(ex.date + 'T12:00:00').getTime();
+                    return exMs > todayMs && exMs <= futureLimit;
+                });
 
-                    if (upcomingExceptions.length > 0) {
-                        const exList = upcomingExceptions.map(ex => {
-                            const exDate = new Date(ex.date + 'T12:00:00');
-                            const dayName = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(exDate);
-                            const tipo = ex.type === 'horario_especial' 
-                                ? `Horário Especial (${ex.specialHours?.open || '?'} às ${ex.specialHours?.close || '?'})` 
-                                : 'FECHADA';
-                            return `- ${dayName} (${ex.date}): ${ex.reason} → ${tipo}${ex.returnDate ? `. Retorno: ${ex.returnDate}` : ''}`;
-                        }).join('\n');
+                if (upcomingExceptions.length > 0) {
+                    const exList = upcomingExceptions.map(ex => {
+                        const exDate = new Date(ex.date + 'T12:00:00');
+                        const dayName = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' }).format(exDate);
+                        const tipo = ex.type === 'horario_especial' 
+                            ? `Horário Especial (${ex.specialHours?.open || '?'} às ${ex.specialHours?.close || '?'})` 
+                            : 'FECHADA';
+                        return `- ${dayName} (${ex.date}): ${ex.reason} → ${tipo}${ex.returnDate ? `. Retorno: ${ex.returnDate}` : ''}`;
+                    }).join('\n');
                         
-                        systemTimeContext += `\n[CALENDÁRIO DE EXCEÇÕES - DATAS ESPECIAIS PRÓXIMAS (CONSULTE OBRIGATORIAMENTE se o cliente perguntar sobre dias futuros)]:\n${exList}`;
-                    }
+                    systemTimeContext += `\n[CALENDÁRIO DE EXCEÇÕES - DATAS ESPECIAIS PRÓXIMAS (CONSULTE OBRIGATORIAMENTE se o cliente perguntar sobre dias futuros)]:\n${exList}`;
                 }
             } catch (calErr) {
                 console.error("[Calendário Futuro] Erro ao injetar exceções futuras:", calErr);
             }
 
-            const specificRules = "### REGRAS ESPECIAIS:\n" +
-                "- REGRA ANTI-LOOP (ABSOLUTA): Verifique o histórico de mensagens. Se VOCÊ acabou de fazer uma pergunta de afunilamento na mensagem anterior e o USUÁRIO acabou de RESPONDER a essa preferência, VOCÊ É ESTRITAMENTE PROIBIDO de fazer uma nova pergunta genérica. Você DEVE cruzar a resposta do usuário com os [ESTOQUE ATUALIZADO], selecionar as 2 ou 3 opções que melhor atendem ao pedido, informar os preços diretamente e explicar brevemente a diferença entre elas.\n" +
-                "- FOTOS DO CLIENTE: O sistema já leu a imagem e injetou os possíveis produtos no estoque. AJA NATURALMENTE. NUNCA use frases robóticas como 'Com base na foto', 'Analisando a imagem', 'O sistema identificou', etc. Apenas assuma que você viu a foto e vá direto ao ponto (ex: 'Sim, nós temos a Ducha Ducali por...').\n" +
-                "- DIRETRIZ DE SEGURANÇA MÁXIMA (ZERO ALUCINAÇÃO): Se o [Contexto de Produtos] estiver VAZIO (0 itens), VOCÊ ESTÁ ESTRITAMENTE PROIBIDO de mencionar qualquer marca, modelo ou preço de produto. VOCÊ NÃO PODE USAR SEU CONHECIMENTO PRÉVIO DA INTERNET. Se não estiver no contexto, VOCÊ NÃO VENDE. Nesse caso de contexto vazio, você DEVE APENAS informar que vai verificar a disponibilidade física na prateleira e acionar um humano, SEM NUNCA listar produtos imaginários.\n" +
-                "- TELE-ENTREGA: Quando alguém perguntar de tele-entrega, responda EXEMPLO: 'Infelizmente ainda não possuímos tele-entrega 😕' (ou use outro emoji similar).\n" +
-                "- LOCALIZAÇÃO: Se pedir endereço, envie o endereço amigavelmente e obrigatoriamente inclua a tag exata no final da resposta: [ACTION: SEND_LOCATION] (pois o sistema interceptará essa tag para enviar o mapa do GPS). Exemplo: 'Nossa loja fica na Rua Osvaldo Cruz, 417, Centro, Igrejinha, pertinho da Rua Coberta! [ACTION: SEND_LOCATION]'\n" +
-                "- CONCISÃO E AFUNILAMENTO (ANTI-TEXTÃO): Se a busca retornar mais de 3 variações do mesmo produto (ex: conectores de vários fios, parafusos de vários tamanhos), VOCÊ É PROIBIDO de listar todas as opções e preços. Em vez disso, diga brevemente que temos o produto e faça APENAS UMA pergunta de afunilamento para descobrir a necessidade exata (ex: \"Para quantos fios você precisa?\"). Mantenha as respostas curtas e humanas.\n" +
-                "- HANDOFF INVISÍVEL (REGRA CRÍTICA — LEIA COM ATENÇÃO): É ESTRITAMENTE PROIBIDO usar QUALQUER uma destas frases ou variações: \"banco de dados\", \"sistema\", \"planilha\", \"não fui programado\", \"não tenho no sistema\", \"não localizei no sistema\", \"não está listado\", \"não encontrei listado\", \"não tenho esse produto cadastrado\", \"no meu sistema\", \"na minha base\", \"não consta\", \"vi que não tenho\". Quando precisar repassar o atendimento para um humano, aja como um ATENDENTE HUMANO REAL que simplesmente não tem certeza se aquele item específico está na prateleira. Exemplos CORRETOS: \"Vou confirmar com o pessoal do balcão se temos essa medida específica, só um instante.\" | \"Deixa eu verificar com a equipe aqui se temos esse modelo disponível, já te retorno!\" | \"Vou pedir pro pessoal dar uma olhada na prateleira pra confirmar, só um segundo.\"\n" +
-                "- PROIBIÇÃO DE RESERVA: É ESTRITAMENTE PROIBIDO usar verbos como \"separar\", \"guardar\" ou \"reservar\" na sua resposta. NUNCA ofereça para deixar um produto separado para o cliente buscar depois, nem hoje e nem no dia seguinte. Se o cliente disser que vem buscar, diga apenas \"Estaremos te esperando!\" ou \"Avisarei o balcão da sua visita\".\n" +
-                "- TEMPLATE DE FECHAMENTO (OBRIGATÓRIO): Toda vez que você apresentar um produto e o preço, o final da sua mensagem NÃO PODE ser inventado. Ele DEVE seguir estritamente esta fórmula: [Oferta de 1 item complementar rápido] + [Pergunta de encerramento padrão]. Exemplos que você é OBRIGADO a seguir: \"...sai por R$ 15,90. Já vai precisar levar a fita veda rosca junto, ou posso te ajudar com mais algum material?\" \"...custa R$ 47,00. Vai precisar das pilhas também, ou quer dar uma olhada em mais alguma coisa?\" NUNCA crie perguntas de fechamento oferecendo facilidades de reserva. Limite-se a oferecer o item extra e perguntar se precisa de mais algo.\n" +
-                "- HANDOFF OBRIGATÓRIO EM PEDIDOS DE RESERVA: Se o cliente solicitar explicitamente que um item seja separado, reservado ou guardado (ex: 'separa pra mim', 'deixa guardado que passo aí', 'reserva um'), VOCÊ NÃO PODE CONFIRMAR A RESERVA. Você DEVE informar educadamente que essa verificação é feita pelo balcão e acionar o Handoff (transbordo) para um atendente humano imediatamente. Exemplo de resposta obrigatória: 'Sobre deixar separado, vou passar para um atendente aqui do balcão confirmar se conseguimos reservar para você, só um instante.'\n" +
-                "- PROIBIÇÃO DE NEGATIVA GERAL (REFORÇO MÁXIMO): Se o produto não está no contexto de estoque, isso NÃO SIGNIFICA que a loja não tem. Significa apenas que VOCÊ não conseguiu localizar agora. NUNCA transforme isso em uma negativa para o cliente. FRASES ABSOLUTAMENTE PROIBIDAS: \"não encontrei\", \"não localizei\", \"não temos\", \"não achei\", \"não identifiquei\", \"não consegui identificar\", \"não está disponível\", \"não possuo esse item\", \"não consta no estoque\", \"vi que não tenho\", \"infelizmente não\". A ÚNICA resposta correta quando não há estoque no contexto é acionar o atendente humano de forma natural: \"Vou pedir para o pessoal do balcão verificar essa peça pra você, só um segundo!\" [HANDOFF]\n" +
-                "### TAG DE HANDOFF (REGRA TÉCNICA OBRIGATÓRIA):\n" +
-                "Sempre que você REALMENTE precisar transferir o atendimento para um humano (balcão/atendente), você DEVE incluir a tag exata [HANDOFF] no FINAL da sua mensagem. Esta tag é OBRIGATÓRIA para o sistema detectar a transferência. Sem ela, o sistema NÃO fará o transbordo.\n" +
-                "ATENÇÃO: Use [HANDOFF] APENAS quando for REALMENTE necessário repassar ao humano (produto não encontrado, reserva, pedidos complexos). NÃO use [HANDOFF] quando:\n" +
-                "  - Você já apresentou produtos e preços e o cliente disse que quer aquele item (nesse caso, apenas confirme e pergunte se precisa de mais algo)\n" +
-                "  - O cliente está agradecendo ou se despedindo\n" +
-                "  - A conversa está fluindo bem e você está conseguindo atender pelo estoque\n" +
-                "Exemplo CORRETO de uso: 'Vou passar para um atendente verificar isso pra você, só um instante! [HANDOFF]'\n" +
-                "Exemplo INCORRETO (NÃO FAÇA): Cliente diz 'quero essa válvula' após ver preços -> NÃO use [HANDOFF], apenas confirme a escolha.\n" +
-                "- IDENTIDADE E PERSONA: Você é estritamente proibido de revelar que é uma inteligência artificial, bot ou assistente virtual. Aja 100% como um atendente humano real do balcão da loja física. Além disso, NUNCA diga que o seu nome é \"Marlene\" (este é o nome do estabelecimento). Quando precisar se apresentar ou saudar, diga apenas: \"Olá! Bem-vindo à Ferragem Marlene, como posso te ajudar hoje?\"\n" +
-                "- LIMPEZA DE TEXTO: NUNCA inicie frases, parágrafos ou listas com asteriscos (*) ou hifens (-). Se precisar listar produtos, use quebras de linha simples ou um emoji discreto (como 🔹 ou 👉). O uso do asterisco é permitido APENAS se for fechar uma palavra para negrito no WhatsApp (ex: *palavra*), nunca solto.\n" +
-                "- TRANSIÇÃO DE ESTADO (TRIAGEM -> VENDA): Se você estiver fazendo perguntas de triagem de uma Categoria Geral e a resposta do usuário permitir que você identifique um produto EXATO que está presente no seu Contexto de Estoque (ex: usuário quer fio para chuveiro, e você tem o 'Fio 6mm' no seu estoque), ABORTE O HANDOFF IMEDIATAMENTE. Mude para a postura de vendedor, confirme a utilidade (\"Para chuveiro o ideal é o 6mm...\") e ofereça o produto específico do estoque com o respectivo preço, convidando para a compra.\n" +
-                "### DIRETRIZES PARA PERGUNTAS RECOMENDADAS (CACHE GERAL):\n" +
-                "- 1. Filtro de Contexto (Não seja repetitivo): Antes de fazer qualquer pergunta baseada na coluna Perguntas_Recomendadas, VOCÊ DEVE cruzar essas perguntas com o histórico da conversa. Se o cliente já forneceu uma informação (ex: já disse a cor, a marca ou o tipo), É ESTRITAMENTE PROIBIDO perguntar isso novamente. Risque mentalmente essa pergunta do seu roteiro.\n" +
-                "- 2. Pacing Conversacional (Sem Textões): NUNCA envie todas as perguntas da coluna de uma vez só. Sintetize a informação. Escolha apenas UMA ou DUAS perguntas mais relevantes que ainda não foram respondidas e faça-as de forma curta, natural e direta.\n" +
-                "- 3. Preparação para o Handoff: O seu objetivo ao fazer essa pergunta não é concluir a venda, mas sim recolher um detalhe crucial que falta (ex: medida, marca, material) para que o atendente humano já receba o cliente com a informação mastigada. Após o cliente responder a essa sua pergunta dinâmica, confirme a anotação e acione o Handoff invisível imediatamente.\n" +
-                "- [INTERPRETAÇÃO FONÉTICA]: Se o cliente escrever palavras com erros ortográficos (como 'acento'), use o contexto da loja para deduzir o item correto (assento sanitário). Responda com a grafia correta de forma natural e empática, NUNCA corrigindo o cliente ou mencionando o erro de digitação.\n" +
-                "- [REGRA DE PRECIFICAÇÃO]: VOCÊ É ESTRITAMENTE PROIBIDO DE INVENTAR OU DEDUZIR PREÇOS. Se o preço exato do produto solicitado não estiver no bloco [Itens no Contexto], você DEVE dizer que precisa confirmar o valor no sistema. Jamais utilize seu conhecimento prévio para dar preços.\n" +
-                "- [MÚLTIPLOS ITENS - REFORÇO]: Se o cliente pediu vários produtos e o contexto contém resultados para APENAS ALGUNS, APRESENTE os encontrados normalmente (com preço e foto) e para os que NÃO estão no contexto diga que vai verificar com o balcão. NUNCA faça handoff total quando há itens parciais encontrados. A VENDA dos itens encontrados tem prioridade absoluta.";
+            const specificRules = SPECIFIC_RULES;
 
             // --- FIX 4: TRIAGEM OBRIGATÓRIA PARA CATEGORIA GERAL ---
             // Detecta se o contexto retornou SOMENTE itens da Tabela Geral (sem produtos da Tabela Principal)
@@ -546,43 +582,35 @@ async function expandSearchQuery(userMessage, recentHistory = []) {
         const sanitizedMessage = userMessage ? userMessage.replace(/[\r\n]+/g, ' ').trim() : '';
         const historyText = recentHistory.map(h => `${h.role === 'user' ? 'Cliente' : 'Bot'}: ${h.content ? h.content.replace(/[\r\n]+/g, ' ') : ''}`).join("\n");
 
-        const prompt = `Você é um especialista em materiais de construção e ferragens recebendo termos para buscar num banco de dados.
+        const prompt = `Especialista em ferragens/materiais de construção. Gere array JSON de palavras-chave curtas para busca textual.
 
-Sua tarefa: Analisar a 'Mensagem Atual' do cliente e o 'Histórico Recente' para gerar ESTRITAMENTE um array JSON com palavras-chave curtas focadas em busca textual.
-
-1. MEMÓRIA DE CONTEXTO (CONTEXTUAL QUERY REFORMULATION): Se a resposta do usuário for uma continuação, especificação, ou resposta a uma pergunta de triagem (ex: "pro chuveiro", "branco", "o mais barato", "220v"), você É OBRIGADO a olhar o turno anterior. Pegue o PRODUTO PRINCIPAL que estava sendo discutido (ex: "fio") e CONCATENE com a resposta atual. O array de busca final deve ser a junção dos dois (ex: ["fio para chuveiro", "fio chuveiro"]). Nunca busque apenas pelo adjetivo ou complemento.
-2. ATENÇÃO AO NOVO ASSUNTO: Se a última mensagem do usuário mudar drasticamente de categoria (ex: estava falando de torneiras e agora pediu tintas), EXTRAIA APENAS OS TERMOS DA NOVA MENSAGEM. Ignore completamente os produtos antigos para não sujar a busca.
-3. PALAVRAS-CHAVE CURTAS: Não transforme perguntas em buscas longas. Extraia a essência. Invés de "quero uma torneira zagonel de pia", retorne ["torneira zagonel pia", "torneira de pia"].
-4. Variações de Cauda Longa: GERE MÚLTIPLAS VARIAÇÕES da frase completa do usuário. Inclua a versão exata que ele digitou e variações com preposições alternativas (ex: se pedir "fio pra chuveiro", retorne ["fio para chuveiro", "fio de chuveiro", "cabo para chuveiro", "fio chuveiro"]).
-5. DIRETRIZ DE PRECISÃO: É ESTRITAMENTE PROIBIDO fatiar a string e enviar termos genéricos isolados A MENOS QUE se trate de atributos chaves (veja regra 9).
-6. REMOÇÃO DE STOP WORDS EXTREMAS: Você DEVE remover preposições que sujem a busca quando não forem vitais, mas mantenha-as se fizerem parte da Cauda Longa do item 4.
-7. IGNORE SAUDAÇÕES: Ignore completamente palavras de cortesia e saudações que vierem na mensagem ("bom dia", "boa tarde", "oi", "tudo bem", "obrigado"). Elas destroem a busca no banco de dados. NUNCA inclua "bom dia", "boa tarde" ou qualquer saudação dentro de nenhum termo do array resultante. Os termos gerados devem conter APENAS nomes de produtos e suas variações técnicas.
-8. LIMPEZA DE TERMOS: É ESTRITAMENTE PROIBIDO incluir adjetivos de valor, preço, tamanho ou qualidade (ex: "barato", "caro", "econômico", "pequeno") na array de busca. Retorne APENAS substantivos e especificações técnicas diretas. Exemplo: se o cliente pedir "chuveiro barato", a sua array deve conter apenas ["chuveiro"]. A análise de preço será feita posteriormente pela IA principal.
-9. QUEBRA DE TOKENS: Quando o usuário pedir um produto com um atributo específico (ex: "chuveiro com pressurizador", "torneira de metal"), ALÉM de gerar a combinação, você DEVE OBRIGATORIAMENTE incluir na array os atributos chave de forma isolada e seus sinônimos. Exemplo: ["chuveiro pressurizador", "pressurizador", "pressurizada", "turbo"]. Isso garantirá que o motor de busca encontre o atributo mesmo se o nome principal estiver escrito diferente na planilha.
-10. PROIBIÇÃO DE FRAGMENTAÇÃO: Você é ESTRITAMENTE PROIBIDO de quebrar termos compostos em palavras soltas genéricas. Se o usuário busca "fechadura para porta de madeira", NÃO retorne "madeira" ou "porta" como palavras isoladas na array, pois isso poluíra o banco de dados. Retorne apenas o termo composto e específico: ["fechadura porta de madeira"].
-11. MENSAGENS VAZIAS/CURTAS: Se a mensagem do usuário não contiver NENHUMA intenção de busca por produto ou característica (ex: "ok", "obrigado", "tem?", "olá"), você DEVE retornar ESTRITAMENTE um array JSON vazio: []. Não adicione nenhuma explicação de texto.
-12. TERMOS RELATIVOS: Se o usuário pedir variações como "outros", "mais opções", "tem outra", "alternativas", você DEVE olhar o histórico, identificar a categoria principal (ex: "chuveiro") e DESCARTAR o filtro restritivo anterior (ex: a marca específica). Crie um array de busca amplo pela categoria geral (ex: ["chuveiro", "ducha"]) para garantir que o contexto traga marcas concorrentes.
-13. MENSAGENS CITADAS: Se o usuário responder com confirmações (ex: "preciso de uma", "quero esse") a uma mensagem que contenha a tag [Respondendo a: {Produto}], extraia estritamente o Nome do Produto de dentro da tag e use-o como termo de busca principal.
-14. MEDIDAS E TAMANHOS: Ao extrair produtos com medidas (metros, mm, kg), forneça variações curtas e separe a medida do nome base para garantir o match no banco (ex: ["fita isolante 5m", "fita isolante 5", "fita isolante preta"]).
-15. FORNECEDORES: Se a mensagem for claramente de um fornecedor, representante comercial oferecendo catálogos, parcerias, revenda ou tabela de preços, você DEVE retornar ESTRITAMENTE o array: ["INTENCAO_FORNECEDOR"].
-16. [CORREÇÃO ORTOGRÁFICA CONTEXTUAL]: Você atua em uma FERRAGEM e LOJA DE MATERIAIS DE CONSTRUÇÃO. Clientes frequentemente cometem erros fonéticos ou de digitação (ex: 'acento' = 'assento de vaso', 'xave' = 'chave', 'tijo' = 'tijolo'). Antes de gerar os termos de busca, traduza e corrija as palavras do usuário para o português correto do varejo de construção. Suas palavras-chave geradas DEVEM conter a grafia correta do produto desejado, ignorando o erro do cliente.
-17. MULTI-PRODUTO (OBRIGATÓRIO): Se a mensagem mencionar DOIS OU MAIS produtos distintos (ex: "torneira Zagonel Luna e chuveiro Ducali 7500w"), você DEVE gerar termos de busca SEPARADOS para CADA produto. NUNCA misture os nomes de dois produtos diferentes num único termo. Exemplo correto: ["torneira zagonel luna", "torneira eletronica zagonel luna", "chuveiro ducali 7500w", "chuveiro ducali"].
-18. VOCABULÁRIO DE FERRAGEM (SINÔNIMOS TÉCNICOS OBRIGATÓRIOS): Certos produtos têm nomes populares diferentes dos nomes técnicos da prateleira. Você DEVE incluir as variações técnicas obrigatoriamente quando detectar as descrições abaixo:
-    - "peça de porcelana", "isolador de porcelana", "terminal de porcelana", "peça branca do fio", "peça do fio terra" → ADICIONE SEMPRE: "conector porcelana", "conector"
-    - "espelho de tomada", "plaquinha de interruptor" → ADICIONE: "espelho"
-    - "curvinha do cano", "joelho de cano" → ADICIONE: "joelho", "cotovelo"
-    - "presilha de cano", "grampo de cano" → ADICIONE: "abraçadeira"
-    - "cano de fogão", "cano fogão a lenha", "cano chaminé", "tubo fogão", "cano de chaminé" → ADICIONE SEMPRE: "cano fogão", "fogão", "chaminé", "cano galvanizado"
+REGRAS:
+1. CONTEXTO: Se resposta é continuação ("pro chuveiro", "branco"), concatene com produto do turno anterior (ex: ["fio para chuveiro", "fio chuveiro"]). Nunca busque só o complemento.
+2. NOVO ASSUNTO: Se mudou de categoria, extraia SÓ termos novos.
+3. PALAVRAS CURTAS: Extraia essência. "torneira zagonel de pia" → ["torneira zagonel pia", "torneira de pia"].
+4. VARIAÇÕES: Gere múltiplas com preposições (pra/para/de). Ex: "fio pra chuveiro" → ["fio para chuveiro", "fio de chuveiro", "cabo para chuveiro"].
+5. Proibido fatiar em termos genéricos isolados (exceto atributos-chave, regra 9).
+6. Remova stop words não essenciais mas mantenha em variações de cauda longa.
+7. IGNORE saudações ("bom dia", "oi", "obrigado"). NUNCA inclua saudação nos termos.
+8. Proibido adjetivos de valor/preço ("barato", "caro", "econômico"). Só substantivos e specs técnicas.
+9. ATRIBUTOS: Produto + atributo → gere combinação + atributo isolado + sinônimos. Ex: ["chuveiro pressurizador", "pressurizador", "pressurizada", "turbo"].
+10. Proibido fragmentar termos compostos ("fechadura porta madeira" → NÃO retorne "madeira" ou "porta" isolados).
+11. Sem intenção de produto ("ok", "obrigado", "olá") → retorne [].
+12. RELATIVOS ("outros", "mais opções"): olhe histórico, identifique categoria, descarte filtro restritivo. Busque amplo.
+13. CITAÇÕES: [Respondendo a: {Produto}] → extraia o produto da tag.
+14. MEDIDAS: Separe medida do nome base. Ex: ["fita isolante 5m", "fita isolante 5"].
+15. FORNECEDORES (oferecendo catálogos/parcerias) → ["INTENCAO_FORNECEDOR"].
+16. CORREÇÃO ORTOGRÁFICA: Contexto de ferragem. 'acento'='assento', 'xave'='chave'. Corrija silenciosamente.
+17. MULTI-PRODUTO: 2+ produtos distintos → termos SEPARADOS para cada. Nunca misture nomes.
+18. SINÔNIMOS TÉCNICOS: "peça porcelana/fio terra"→"conector porcelana"; "espelho tomada"→"espelho"; "joelho cano"→"joelho","cotovelo"; "presilha cano"→"abraçadeira"; "cano fogão/chaminé"→"cano fogão","chaminé","cano galvanizado".
 
 ### ENTRADAS:
-Mensagem Atual: "${sanitizedMessage}"
-Histórico Recente (Opcional):
-${historyText ? historyText : "Nenhum histórico recente."}
+Mensagem: "${sanitizedMessage}"
+Histórico:
+${historyText || "Nenhum."}
 
-RETORNE APENAS O ARRAY JSON. NADA A MAIS. Você deve retornar ÚNICA E EXCLUSIVAMENTE um array JSON válido. Sem formatação markdown (\`\`\`json), sem explicações, sem quebras de linha literais dentro das aspas.
-Exemplo 1 (Acumulando): ["torneira de parede", "torneira elétrica parede"]
-Exemplo 2 (Mudando Assunto): ["cimento cp2", "cimento votoran"]
-Exemplo 3 (Novo): ["fita veda rosca", "fita teflon"]`;
+RETORNE APENAS array JSON válido. Sem markdown, sem explicações.
+Ex: ["torneira de parede", "torneira elétrica parede"]`;
 
         const result = await model.generateContent(prompt);
         const rawResponse = result.response.text();
