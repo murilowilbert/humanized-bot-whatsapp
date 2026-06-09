@@ -7,3 +7,5 @@ auth_info_baileys
 *.db
 *.sqlite
 dev.db
+data/fotos
+data/fotos_sheets

@@ -33,6 +33,8 @@ jobs:
           command_timeout: 45m
           script: |
             cd ~/bot-ferragem
+            # Libera espaço no disco removendo imagens e containers antigos
+            docker system prune -af 2>/dev/null || true
             # Constrói a imagem do Docker com o código novo
             docker build -t bot-image .
             
@@ -56,8 +58,11 @@ jobs:
             echo "GOOGLE_SHEETS_URL_GERAL=${{ secrets.GOOGLE_SHEETS_URL_GERAL }}" >> ~/bot-ferragem/.env
             echo "TZ=America/Sao_Paulo" >> ~/bot-ferragem/.env
             
-            # Roda a versão nova em segundo plano
-            docker run -d -p 3000:3000 --env-file ~/bot-ferragem/.env -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys -v ~/bot-ferragem/dev.db:/app/dev.db --name bot-marlene bot-image
+            # Garante que as pastas de fotos existam no servidor
+            mkdir -p ~/bot-ferragem/data/fotos ~/bot-ferragem/data/fotos_sheets
+            
+            # Roda a versão nova em segundo plano (com auto-restart e fotos montadas como volume)
+            docker run -d -p 3000:3000 --restart unless-stopped --env-file ~/bot-ferragem/.env -v ~/bot-ferragem/auth_info_baileys:/app/auth_info_baileys -v ~/bot-ferragem/dev.db:/app/dev.db -v ~/bot-ferragem/data/fotos:/app/data/fotos -v ~/bot-ferragem/data/fotos_sheets:/app/data/fotos_sheets --name bot-marlene bot-image
             
             # Aguarda o container ligar o banco de dados e o navegador invisível
             echo "Aguardando o bot ligar o motor..."
