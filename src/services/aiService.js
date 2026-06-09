@@ -101,7 +101,15 @@ function slimStockContext(items) {
             slim['potência'] = item[powerKey];
         }
 
+        // Find brand key
+        const brandKey = Object.keys(item).find(k => k.toLowerCase() === 'marca');
+        if (brandKey && item[brandKey] !== undefined && item[brandKey] !== '') {
+            slim['marca'] = item[brandKey];
+        }
+
         if (item['_isSuggestion']) slim['_isSuggestion'] = true;
+        if (item['_temFoto']) slim['_temFoto'] = true;
+        if (item['_relevancia'] !== undefined) slim['_relevancia'] = item['_relevancia'];
         return slim;
     });
 }
@@ -130,7 +138,10 @@ const SPECIFIC_RULES = "### REGRAS ESPECIAIS:\n" +
     "- OBRIGATORIEDADE DE TRIAGEM: Se houver uma CATEGORIA DE TRIAGEM DISPONÍVEL no contexto, você DEVE enviar a pergunta de triagem recomendada. É expressamente PROIBIDO fazer o handoff direto sem fazer a pergunta de triagem antes neste caso. A triagem serve para coletar informações para o atendente.\n" +
     "- FONÉTICA: 'acento'='assento', 'xave'='chave'. Corrija silenciosamente sem mencionar erro.\n" +
     "- PRECIFICAÇÃO: PROIBIDO inventar/deduzir preços fora do contexto.\n" +
-    "- MÚLTIPLOS ITENS PARCIAIS: Apresente encontrados com preço/foto. Para não encontrados, diga que vai verificar. NUNCA faça handoff total se achou itens parciais.";
+    "- MÚLTIPLOS ITENS PARCIAIS: Apresente encontrados com preço/foto. Para não encontrados, diga que vai verificar. NUNCA faça handoff total se achou itens parciais.\n" +
+    "- FOTOS INTELIGENTES: O campo '_temFoto' indica produtos com foto no servidor. Use {{COD:xxx}} SOMENTE para produtos com _temFoto=true. Produtos sem _temFoto NÃO têm foto disponível — não tente enviar.\n" +
+    "- RELEVÂNCIA: O campo '_relevancia' indica confiança do match (maior = melhor). Priorize produtos com _relevancia alta ao sugerir opções ao cliente.\n" +
+    "- MARCA EXPLÍCITA: Sempre cite o campo 'marca' ao apresentar produtos. NUNCA invente marca que não está no contexto.";
 
 
 /**

@@ -696,6 +696,10 @@ async function setupEvents() {
                     stockContext = [];
                     for (let item of combinedContext) {
                         const realItem = item.item || item;
+                        // Preserva score de relevância da busca para a IA priorizar
+                        if (item.matchCount !== undefined) {
+                            realItem._relevancia = item.matchCount;
+                        }
                         // Extrai a chave única para desduplicar entre as duas tabelas
                         const uniqueKey = realItem['código'] || realItem['codigo'] || realItem['ean'] || realItem['modelo/produto'] || realItem['categoria_geral'];
 
@@ -706,6 +710,21 @@ async function setupEvents() {
                     }
 
                     stockContext = stockContext.slice(0, 15);
+
+                    // Detecta quais produtos têm foto disponível no disco para a IA saber
+                    for (const item of stockContext) {
+                        const code = item['código'] || item['codigo'];
+                        if (code) {
+                            const photoExists = [
+                                path.join(__dirname, `../data/fotos/${code}.jpg`),
+                                path.join(__dirname, `../data/fotos/${code}.png`),
+                                path.join(__dirname, `../data/fotos_sheets/${code}.jpg`),
+                                path.join(__dirname, `../data/fotos_sheets/${code}.png`),
+                            ].some(p => fs.existsSync(p));
+                            if (photoExists) item._temFoto = true;
+                        }
+                    }
+
                     console.log(`[Unified Search] Otimizado: ${stockContext.length} itens combinados enviados à IA.`);
 
                     // --- BUSCA DE PRODUTOS SIMILARES (Fallback Inteligente) ---

@@ -192,7 +192,7 @@ async function searchProductInSheet(keywordsArray) {
     }
 
     for (const term of searchTerms) {
-        let tokens = term.toLowerCase().split(/\s+/).filter(t => t.length > 2 && !stopWordsSearch.has(t));
+        let tokens = term.toLowerCase().split(/\s+/).filter(t => t.length > 1 && !stopWordsSearch.has(t));
         if (tokens.length === 0) continue;
 
         // Expande tokens de medida com variações
@@ -256,7 +256,6 @@ async function searchProductInSheet(keywordsArray) {
             { name: 'atributos físicos', weight: 0.3 },
             { name: 'características principais', weight: 0.3 },
             { name: 'marca', weight: 1.5 },
-            { name: 'preço (r$)', weight: 0.5 },
             { name: 'potência/voltagem', weight: 1.0 },
             { name: 'potencia/voltagem', weight: 1.0 },
             { name: 'código', weight: 2.0 },
