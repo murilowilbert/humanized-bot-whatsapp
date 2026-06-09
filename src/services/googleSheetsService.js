@@ -138,6 +138,19 @@ function startAutoRefresh(intervalMs = 45 * 60 * 1000) { // Default 45 mins
     }, intervalMs);
 }
 
+function tokenMatchesText(text, token) {
+    // Divide o texto em palavras considerando caracteres acentuados
+    const words = text.toLowerCase().split(/[^\u00C0-\u00FFa-zA-Z0-9]+/);
+    
+    // Se for um token muito curto (2 letras ou menos, ex: 'nd', 'pá', 'pé', 'ar'), exige correspondência exata
+    if (token.length <= 2) {
+        return words.includes(token);
+    }
+    
+    // Se for maior, pode ser correspondência exata ou o início de uma palavra (prefixo)
+    return words.some(w => w === token || w.startsWith(token));
+}
+
 /**
  * Busca por palavras-chaves nos itens dinâmicos do Google Sheets
  * @param {Array<string>|string} keywordsArray Pode ser String crua ou Array expandido da IA
@@ -236,7 +249,9 @@ async function searchProductInSheet(keywordsArray) {
 
             let hits = 0;
             for (const token of expandedTokens) {
-                if (searchableText.includes(token) || normalizedSearchable.includes(token)) hits++;
+                if (tokenMatchesText(searchableText, token) || tokenMatchesText(normalizedSearchable, token)) {
+                    hits++;
+                }
             }
 
             // Conta hits baseados nos tokens ORIGINAIS (não expandidos) para o ratio
