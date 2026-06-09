@@ -25,43 +25,64 @@ function parseCSVRow(str) {
 }
 
 /**
- * Puxa os dados atualizados do link CSV Público da Planilha do Google usando fetch.
+ * Puxa os dados atualizados do link CSV Público da Planilha do Google usando fetch com retentativas.
  */
 async function fetchGoogleSheetCSV(csvUrl) {
     if (!csvUrl) return null;
 
-    try {
-        const response = await fetch(csvUrl);
-        if (!response.ok) {
-            console.error(`Falha ao acessar a planilha CSV. Status: ${response.status}`);
-            return null;
-        }
+    const maxRetries = 3;
+    const retryDelay = 2000; // 2 segundos
 
-        const text = await response.text();
-        const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '');
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            // Usamos headers para desativar keep-alive (evita UND_ERR_SOCKET/other side closed no Node 18+)
+            const response = await fetch(csvUrl, {
+                headers: {
+                    'Connection': 'close'
+                }
+            });
 
-        if (lines.length === 0) return [];
-
-        // Considera a primeira linha como cabeçalho
-        const headers = parseCSVRow(lines[0]).map(h => h.toLowerCase().trim());
-
-        const data = [];
-        for (let i = 1; i < lines.length; i++) {
-            const rowValues = parseCSVRow(lines[i]);
-            const item = {};
-
-            for (let j = 0; j < headers.length; j++) {
-                const head = headers[j] || `coluna_${j}`;
-                item[head] = rowValues[j] || "";
+            if (!response.ok) {
+                console.error(`[Tentativa ${attempt}/${maxRetries}] Falha ao acessar a planilha CSV. Status: ${response.status}`);
+                if (attempt < maxRetries) {
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    continue;
+                }
+                return null;
             }
-            data.push(item);
-        }
 
-        return data;
-    } catch (e) {
-        console.error("Erro ao puxar dados da Planilha do Google:", e);
-        return null; // Retorna null para sinalizar erro e cair no fallback
+            const text = await response.text();
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '');
+
+            if (lines.length === 0) return [];
+
+            // Considera a primeira linha como cabeçalho
+            const headers = parseCSVRow(lines[0]).map(h => h.toLowerCase().trim());
+
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const rowValues = parseCSVRow(lines[i]);
+                const item = {};
+
+                for (let j = 0; j < headers.length; j++) {
+                    const head = headers[j] || `coluna_${j}`;
+                    item[head] = rowValues[j] || "";
+                }
+                data.push(item);
+            }
+
+            return data;
+        } catch (e) {
+            console.error(`[Tentativa ${attempt}/${maxRetries}] Erro ao puxar dados da Planilha do Google:`, e.message || e);
+            if (attempt < maxRetries) {
+                console.log(`Aguardando ${retryDelay / 1000}s para tentar novamente...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+            } else {
+                return null; // Retorna null para sinalizar erro após estourar as tentativas
+            }
+        }
     }
+    return null;
 }
 
 async function getCachedSheetData() {
