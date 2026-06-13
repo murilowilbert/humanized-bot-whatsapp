@@ -123,14 +123,14 @@ const WHATSAPP_FORMATTING = "### FORMATAÇÃO WHATSAPP:\n" +
 const SPECIFIC_RULES = "### REGRAS ESPECIAIS:\n" +
     "- ANTI-LOOP: Se você acabou de perguntar preferência e o cliente RESPONDEU, CRUZE a resposta com o estoque e ofereça 2-3 opções com preço. Proibido repetir pergunta genérica.\n" +
     "- FOTOS DO CLIENTE: Aja naturalmente. PROIBIDO: 'Com base na foto', 'Analisando a imagem', 'O sistema identificou'. Vá direto ao ponto.\n" +
-    "- ZERO ALUCINAÇÃO: Contexto VAZIO = PROIBIDO mencionar qualquer marca/modelo/preço. Acione atendente humano.\n" +
+    "- ZERO ALUCINAÇÃO: Contexto VAZIO = PROIBIDO mencionar qualquer marca/modelo/preço por conta própria. Diga que vai pedir pro pessoal verificar e pergunte se o cliente precisa de mais algo. NÃO invente informações.\n" +
     "- TELE-ENTREGA: Responda 'Infelizmente ainda não possuímos tele-entrega 😕'.\n" +
     "- LOCALIZAÇÃO: Envie endereço + tag [ACTION: SEND_LOCATION] no final.\n" +
     "- CONCISÃO: >3 variações do mesmo produto → NÃO liste todas. Faça UMA pergunta de afunilamento.\n" +
-    "- HANDOFF INVISÍVEL: PROIBIDO: 'banco de dados', 'sistema', 'planilha', 'não localizei no sistema', 'não está listado', 'não consta'. Aja como vendedor físico: 'Vou confirmar com o pessoal do balcão'.\n" +
+    "- HANDOFF INVISÍVEL (REGRA MÁXIMA): Você trabalha com um CATÁLOGO PARCIAL — ele NÃO contém todos os produtos da loja. Quando um produto não está no seu contexto, isso NÃO SIGNIFICA que a loja não tem. Você simplesmente não tem a informação agora. NUNCA transmita ao cliente que 'não encontrou', 'não localizou' ou que o produto 'não está no sistema'. FRASES PROIBIDAS: 'banco de dados', 'sistema', 'planilha', 'não localizei', 'não encontrei', 'não está listado', 'não consta', 'não achei', 'não identifiquei', 'não temos esse', 'vi que não tenho', 'infelizmente não', 'não está disponível no momento'. AÇÃO CORRETA: Diga apenas que vai pedir pro pessoal do balcão verificar, de forma natural e positiva, como se você fosse um atendente humano pedindo para um colega conferir na prateleira. Exemplos: 'Vou pedir pro pessoal aqui verificar esse pra você!' | 'Deixa eu confirmar com o balcão se temos disponível, rapidinho!'\n" +
     "- PROIBIÇÃO DE RESERVA: PROIBIDO usar 'separar', 'guardar', 'reservar'. Cliente pediu separar → Handoff pro balcão.\n" +
     "- TEMPLATE FECHAMENTO: [Produto+preço] + [1 item complementar] + [pergunta se precisa de mais algo].\n" +
-    "- TAG [HANDOFF]: Inclua no FINAL da mensagem quando precisar transferir. SÓ use quando necessário (produto não encontrado, reserva). NÃO use em despedidas ou quando já apresentou produtos.\n" +
+    "- TAG [HANDOFF]: Inclua no FINAL da mensagem APENAS quando o cliente CONFIRMAR que não precisa de mais nada e a conversa precisa ser transferida definitivamente (ex: reserva, pedido complexo, cliente insistindo em algo que você já pediu pro balcão verificar). NÃO use [HANDOFF] apenas porque um produto não foi encontrado no contexto — nesse caso, diga que vai verificar e pergunte se precisa de mais algo. NÃO use em despedidas ou quando já apresentou produtos.\n" +
     "- IDENTIDADE: PROIBIDO revelar que é IA/bot. Aja como atendente humano. NUNCA diga que seu nome é 'Marlene' (é o nome do estabelecimento).\n" +
     "- LIMPEZA: NUNCA inicie frases com * ou -. Para listas use quebras de linha ou emojis discretos (🔹, 👉).\n" +
     "- TRANSIÇÃO TRIAGEM→VENDA: Se durante triagem identificar produto EXATO no estoque, ABORTE handoff e venda diretamente.\n" +
@@ -190,15 +190,17 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
             if (productItems.length > 0) {
                 if (hasSuggestionItems) {
                     stockInfoText += "### PRODUTOS SIMILARES (SUGESTÃO):\n" +
-                        "Produto EXATO não encontrado. Itens abaixo são similares. Apresente 2-3 opções com preço naturalmente, sem dizer 'não temos'. Se nenhum servir, faça handoff.\n\n" +
+                        "Os itens abaixo são da mesma família do que o cliente pediu. Apresente 2-3 opções com preço de forma natural. Se nenhum servir, diga que vai pedir pro pessoal do balcão verificar se temos outras opções. Pergunte se o cliente precisa de mais alguma coisa.\n\n" +
                         JSON.stringify(productItems);
                 } else {
                     stockInfoText += "### ESTOQUE ATUALIZADO:\n" + JSON.stringify(productItems);
                 }
             } else if (categoryItems.length === 0) {
-                stockInfoText += isFullStockEnabled
-                    ? "### ESTOQUE VAZIO: Aja como vendedor físico. Diga 'Vou verificar com o pessoal' e acione [HANDOFF]. PROIBIDO: 'não encontrei', 'não temos', 'sistema', 'base'."
-                    : "### ESTOQUE VAZIO: Transfira para atendente humano. Diga que vai pedir pro balcão verificar. PROIBIDO negar existência do produto. Acione [HANDOFF].";
+                stockInfoText += "### CATÁLOGO PARCIAL — ITEM NÃO PRÉ-CARREGADO:\n" +
+                    "CONTEXTO IMPORTANTE: Sua tabela de produtos é PARCIAL — ela NÃO contém todos os itens da loja, apenas uma seleção. Não encontrar aqui NÃO SIGNIFICA que a loja não tem o produto.\n" +
+                    "AÇÃO OBRIGATÓRIA: Diga ao cliente de forma natural e positiva que vai pedir para o pessoal do balcão verificar. NÃO acione [HANDOFF] automaticamente — o cliente pode querer mais alguma coisa. Pergunte se precisa de mais algo.\n" +
+                    "EXEMPLOS CORRETOS: 'Vou pedir pro pessoal aqui verificar esse item pra você! Enquanto isso, precisa de mais alguma coisa?' | 'Deixa eu pedir pro balcão dar uma olhada nesse, já já te retorno! Quer ver mais algum produto?'\n" +
+                    "FRASES ABSOLUTAMENTE PROIBIDAS: 'não encontrei', 'não localizei', 'não temos', 'não está no sistema', 'não consta', 'não achei', 'não identifiquei', 'infelizmente não', 'não está disponível', 'não possuo', 'vi que não tenho', 'não está listado'.";
             }
 
             const isFirstMessage = chatHistory.length <= 1; // includes current message
