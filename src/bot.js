@@ -279,13 +279,32 @@ async function setupEvents() {
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut && !isDeliberateClose;
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+            const shouldReconnect = !isLoggedOut && !isDeliberateClose;
             console.log('connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
             initialized = false;
             server.emitEvent('ready', false);
 
-            if (shouldReconnect) {
-                initialize();
+            if (isLoggedOut) {
+                console.error('🔑 [Auth] Sessão desconectada/expirada no WhatsApp (401 Unauthorized). Resetando sessão antiga para gerar novo QR Code...');
+                const authDir = path.join(__dirname, '../auth_info_baileys');
+                try {
+                    if (fs.existsSync(authDir)) {
+                        fs.rmSync(authDir, { recursive: true, force: true });
+                        fs.mkdirSync(authDir, { recursive: true });
+                        console.log('🔑 [Auth] Sessão limpa com sucesso.');
+                    }
+                } catch (e) {
+                    console.error('🔑 [Auth] Falha ao limpar sessão antiga:', e.message);
+                }
+                setTimeout(() => {
+                    initialize();
+                }, 2000);
+            } else if (shouldReconnect) {
+                setTimeout(() => {
+                    initialize();
+                }, 2000);
             }
         } else if (connection === 'open') {
             console.log('Client is ready!');

@@ -12,9 +12,10 @@ async function initializeBrowser() {
     if (browserInstance) return browserInstance;
 
     try {
-        console.log('[Scraper] Iniciando Puppeteer em background...');
+        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || (fs.existsSync('/usr/bin/google-chrome-stable') ? '/usr/bin/google-chrome-stable' : undefined);
         browserInstance = await puppeteer.launch({
             headless: true,
+            executablePath: executablePath || undefined,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',

@@ -33,8 +33,9 @@ jobs:
           command_timeout: 45m
           script: |
             cd ~/bot-ferragem
-            # Libera espaço no disco removendo imagens e containers antigos
-            docker system prune -af 2>/dev/null || true
+            # Libera espaço no disco removendo imagens antigas, build cache e temporários
+            docker system prune -af --volumes 2>/dev/null || true
+            docker builder prune -af 2>/dev/null || true
             # Constrói a imagem do Docker com o código novo
             docker build -t bot-image .
             
