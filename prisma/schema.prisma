@@ -18,6 +18,7 @@ model ChatHistory {
   createdAt   DateTime @default(now())
 
   @@index([phoneNumber])
+  @@index([phoneNumber, createdAt])
 }
 
 model MissedDemand {

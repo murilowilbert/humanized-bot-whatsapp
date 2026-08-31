@@ -124,12 +124,18 @@ async function forceRefreshCache() {
     return { principal: resPrincipal ? resPrincipal.length : 0, categoria: resCategoria ? resCategoria.length : 0 };
 }
 
+let autoRefreshTimer = null;
+
 /**
  * Inicia o Auto-Refresh em Background. Deve ser invocado apenas uma vez.
  */
 function startAutoRefresh(intervalMs = 45 * 60 * 1000) { // Default 45 mins
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
     console.log(`[Google Sheets] Auto-Refresh configurado para a cada ${intervalMs / 60000} minutos.`);
-    setInterval(async () => {
+    autoRefreshTimer = setInterval(async () => {
         console.log(`[Google Sheets] 🔄 Auto-Refresh Acionado! Atualizando caches em background...`);
         lastCacheTime = 0;
         lastCategoryCacheTime = 0;

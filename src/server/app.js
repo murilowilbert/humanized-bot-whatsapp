@@ -10,6 +10,8 @@ const basicAuth = require('express-basic-auth');
 const metricsService = require('../services/metricsService');
 const settings = require('../config/settings');
 const googleSheetsService = require('../services/googleSheetsService');
+const aiService = require('../services/aiService');
+const prisma = require('../prisma');
 
 const app = express();
 const server = http.createServer(app);
@@ -161,6 +163,9 @@ app.post('/api/holidays', (req, res) => {
         const file = path.join(__dirname, '../../data/store_exceptions.json');
         const data = Array.isArray(req.body) ? req.body : [];
         fs.writeFileSync(file, JSON.stringify(data, null, 2));
+        if (aiService.invalidateExceptionsCache) {
+            aiService.invalidateExceptionsCache();
+        }
         res.json({ success: true });
     } catch (e) {
         console.error("Erro ao salvar store_exceptions.json:", e);
@@ -171,17 +176,12 @@ app.post('/api/holidays', (req, res) => {
 // Feature 4: Demanda Reprimida API Endpoint
 app.get('/api/ranking', async (req, res) => {
     try {
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
-
         const ranking = await prisma.missedDemand.findMany({
             orderBy: { searchCount: 'desc' },
             take: 10
         });
 
-        // Simples proteção CORS extra ou retorno. O CORS wrapper geral ('app.use(cors())') já está ativo.
         res.json(ranking);
-        await prisma.$disconnect();
     } catch (e) {
         console.error("Erro ao buscar ranking de demanda:", e);
         res.status(500).json({ error: "Erro interno ao buscar ranking" });

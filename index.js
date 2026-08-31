@@ -49,8 +49,10 @@ console.log("Iniciando Sistema Ferragem Marlene...");
 // 1. Start Dashboard Server
 server.startServer();
 
-// 2. Initialize Puppeteer Singleton
-scraperService.initializeBrowser();
+// 2. Initialize Puppeteer Singleton (se SnapControl estiver configurado)
+if (process.env.SNAPCONTROL_URL) {
+    scraperService.initializeBrowser();
+}
 
 console.log("Sistema Ferragem Marlene iniciado.");
 

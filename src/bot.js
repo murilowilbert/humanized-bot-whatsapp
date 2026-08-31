@@ -4,9 +4,7 @@ const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+const prisma = require('./prisma');
 
 const settings = require('./config/settings');
 const stockService = require('./services/stockService');
@@ -28,7 +26,58 @@ const userPausedStates = new Map(); // Controle de Handoff/Pausa
 const userSessions = new Map(); // Controle de Máquina de Estados (Triage, etc)
 const DEBOUNCE_TIME_MS = 5000; // Tempo de espera para o usuário terminar de digitar
 const mutedUsers = new Map(); // Sistema de Cooldown de 24h (Human Takeover)
-const botSentMessageIds = new Set(); // Rastreamento de mensagens enviadas pelo bot para evitar auto-handoff
+
+// Rastreamento de mensagens enviadas pelo bot com limite de memória (LRU Bounded Set)
+const botSentMessageIds = new Set();
+const originalSetAdd = botSentMessageIds.add.bind(botSentMessageIds);
+botSentMessageIds.add = function (id) {
+    if (!id) return this;
+    if (this.size >= 1000) {
+        const oldest = this.values().next().value;
+        if (oldest) this.delete(oldest);
+    }
+    return originalSetAdd(id);
+};
+
+let memoryPruneTimer = null;
+function startMemoryPruningInterval() {
+    if (memoryPruneTimer) return;
+    memoryPruneTimer = setInterval(() => {
+        const now = Date.now();
+        // 1. Limpa userPausedStates expirados (>12h)
+        let expiredPaused = 0;
+        for (const [key, timestamp] of userPausedStates.entries()) {
+            if (now - timestamp >= 43200000) {
+                userPausedStates.delete(key);
+                expiredPaused++;
+            }
+        }
+        if (expiredPaused > 0) {
+            savePausedStatesToDisk();
+            console.log(`[Auto-Prune] ${expiredPaused} estados de pausa expirados foram limpos da memória/disco.`);
+        }
+
+        // 2. Limpa userSessions inativos há mais de 24h
+        let expiredSessions = 0;
+        for (const [key, session] of userSessions.entries()) {
+            const lastTime = session.lastActive || session.lastMsgTime || 0;
+            if (now - lastTime > 24 * 60 * 60 * 1000) {
+                userSessions.delete(key);
+                expiredSessions++;
+            }
+        }
+        if (expiredSessions > 0) {
+            console.log(`[Auto-Prune] ${expiredSessions} sessões inativas (>24h) foram limpas da memória.`);
+        }
+
+        // 3. Limpa mutedUsers expirados
+        for (const [key, muteExpiry] of mutedUsers.entries()) {
+            if (now >= muteExpiry) {
+                mutedUsers.delete(key);
+            }
+        }
+    }, 60 * 60 * 1000); // Executa a cada 1 hora
+}
 
 let sock = null;
 let initialized = false;
@@ -342,6 +391,17 @@ async function setupEvents() {
 
         if (rawJid.includes('@g.us') || rawJid === 'status@broadcast') return;
 
+        // SHIELD ANTI-FORNECEDOR: Verifica se o usuário está mutado por 24h
+        if (mutedUsers.has(rawJid)) {
+            const muteExpiry = mutedUsers.get(rawJid);
+            if (Date.now() < muteExpiry) {
+                console.log(`[Shield Fornecedor] Mensagem de ${cleanId} ignorada silenciosamente (mutado por 24h).`);
+                return;
+            } else {
+                mutedUsers.delete(rawJid);
+            }
+        }
+
         // O Baileys precisa do JID original (@lid ou @s.whatsapp.net) para conseguir responder a mensagem
         const jid = rawJid;
 
@@ -356,8 +416,8 @@ async function setupEvents() {
             }
         }
 
-        // Renomeia cleanId para headers para manter compatibilidade com o resto do código
-        const headers = cleanId;
+        // Normalização uniforme de telefone/JID para histórico no DB
+        const headers = normalizeJid(rawJid) || cleanId;
 
         // 0.3 Global Override for "Reiniciar"
         const lowerText = textContent.trim().toLowerCase();
@@ -424,24 +484,22 @@ async function setupEvents() {
             return;
         }
 
-        // O bloco manual de "State Machine: AWAITING_TRIAGE_ANSWER" foi completamente apagado em favor do Controle Delegado ao LLM.
-
         metricsService.incrementMessages();
 
-        // Edge Case 7: Rate Limiting Básico (Max 6 seguidos)
+        // Edge Case 7: Rate Limiting Básico (Max 8 mensagens em 10 segundos via janela deslizante)
         const nowTimeLimit = Date.now();
-        if (!userSessions.has(jid)) userSessions.set(jid, { state: 'IDLE', msgCount: 0, lastMsgTime: nowTimeLimit });
+        if (!userSessions.has(jid)) {
+            userSessions.set(jid, { state: 'IDLE', msgTimestamps: [], lastActive: nowTimeLimit });
+        }
 
         const sessionObj = userSessions.get(jid);
-        if (nowTimeLimit - sessionObj.lastMsgTime < 10000) {
-            sessionObj.msgCount++;
-        } else {
-            sessionObj.msgCount = 1; // Reseta se passou de 10 seg
-        }
-        sessionObj.lastMsgTime = nowTimeLimit;
+        sessionObj.lastActive = nowTimeLimit;
+        // Filtra apenas mensagens enviadas nos últimos 10 segundos
+        sessionObj.msgTimestamps = (sessionObj.msgTimestamps || []).filter(t => nowTimeLimit - t < 10000);
+        sessionObj.msgTimestamps.push(nowTimeLimit);
 
-        if (sessionObj.msgCount > 6) {
-            if (sessionObj.msgCount === 7) {
+        if (sessionObj.msgTimestamps.length > 8) {
+            if (sessionObj.msgTimestamps.length === 9) {
                 const sentMsg = await sock.sendMessage(jid, { text: "Opa, recebi muitas mensagens de uma vez! Por favor, aguarde alguns segundos para eu conseguir processar tudo. 🔄" });
                 if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
             }
@@ -915,13 +973,12 @@ async function setupEvents() {
                 // devolta na fila (junto com a nova) e abortar. O timer que a segunda mensagem criou 
                 // vai rodar em breve e pegar tudo junto!
                 if (userMessageQueues.has(jid)) {
-                    console.log(`[Debounce - Abortando Reação] Cliente enviou mensagem enquanto a IA gerava a resposta. Cancelando envio e re-escalonando fila consolidada.`);
-
-                    // NÃO re-empilha os itens já processados (queue). Apenas as novas mensagens
-                    // que chegaram durante o processamento já estão na fila e serão processadas
-                    // pelo próximo ciclo do debounce timer.
-
-                    // Aborta! O bot não escreve no banco, não manda pro WhatsApp.
+                    console.log(`[Debounce - Abortando Reação] Cliente enviou mensagem enquanto a IA gerava a resposta. Re-injetando texto anterior no início da fila para consolidar.`);
+                    const pendingQueue = userMessageQueues.get(jid) || [];
+                    userMessageQueues.set(jid, [
+                        { text: combinedText.trim(), media: null },
+                        ...pendingQueue
+                    ]);
                     return;
                 }
 
@@ -1106,6 +1163,7 @@ async function initialize() {
     try {
         // Restaura estados de pausa do disco (sobrevive a reinícios)
         loadPausedStatesFromDisk();
+        startMemoryPruningInterval();
 
         console.log("[Boot] Iniciando aquecimento de Caches (Google Sheets)...");
         await googleSheetsService.getCachedSheetData();

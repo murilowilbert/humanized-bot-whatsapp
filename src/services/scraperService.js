@@ -14,17 +14,22 @@ async function initializeBrowser() {
     try {
         console.log('[Scraper] Iniciando Puppeteer em background...');
         browserInstance = await puppeteer.launch({
-            headless: true, // Ou "new" em versões recentes
+            headless: true,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
                 '--disable-gpu',
-                '--window-size=1024,768',
-                '--single-process' // Útil em e2-micro para economizar recursos (pode ser instável em alguns SOs, remova se der erro)
+                '--window-size=1024,768'
             ]
         });
+
+        browserInstance.on('disconnected', () => {
+            console.warn('[Scraper] Browser do Puppeteer desconectado. Instância resetada para auto-recovery.');
+            browserInstance = null;
+        });
+
         console.log('[Scraper] Puppeteer iniciado com sucesso.');
         return browserInstance;
     } catch (e) {

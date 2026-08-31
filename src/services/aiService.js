@@ -44,6 +44,15 @@ function getCachedExceptions() {
     return _cachedExceptions;
 }
 
+function invalidateExceptionsCache() {
+    _cachedExceptions = null;
+    _cachedExceptionsTime = 0;
+    _cachedStoreInfo = null;
+    _cachedStoreInfoTime = 0;
+    console.log("[Cache] Cache de exceções e store_info invalidado com sucesso.");
+}
+
+
 /**
  * Enxuga o JSON de estoque para enviar apenas campos essenciais à IA.
  * Reduz ~40% dos tokens de input por produto.
@@ -280,34 +289,51 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                     nextOpenStr = targetException.returnDate;
                 }
             } else {
-                // Lógica Rotineira Padrão (Sem Feriados)
-                // Lógica de Segunda a Sexta (Dias 1 a 5)
-                if (currentDayOfWeekly >= 1 && currentDayOfWeekly <= 5) {
-                    if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 810 && currentTotal < 1140)) {
-                        storeStatusStr = "ABERTA";
-                    } else if (currentTotal < 480) {
-                        nextOpenStr = "hoje às 08:00";
-                    } else if (currentTotal >= 720 && currentTotal < 810) {
-                        nextOpenStr = "hoje às 13:30"; // Horário de Almoço
-                    } else {
-                        nextOpenStr = currentDayOfWeekly === 5 ? "amanhã (sábado) às 08:00" : "amanhã às 08:00";
+                // Lógica Rotineira Padrão (Sem Feriados) calculada dinamicamente via settings.workingHours
+                const dayNames = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+                const todaySchedule = settings.workingHours[currentDayOfWeekly] || [];
+                let isCurrentlyOpen = false;
+
+                for (const range of todaySchedule) {
+                    const [startH, startM] = range.start.split(':').map(Number);
+                    const [endH, endM] = range.end.split(':').map(Number);
+                    const startTotal = startH * 60 + startM;
+                    const endTotal = endH * 60 + endM;
+                    if (currentTotal >= startTotal && currentTotal < endTotal) {
+                        isCurrentlyOpen = true;
+                        break;
                     }
                 }
-                // Lógica de Sábado (Dia 6)
-                else if (currentDayOfWeekly === 6) {
-                    if ((currentTotal >= 480 && currentTotal < 720) || (currentTotal >= 840 && currentTotal < 1050)) {
-                        storeStatusStr = "ABERTA";
-                    } else if (currentTotal < 480) {
-                        nextOpenStr = "hoje às 08:00";
-                    } else if (currentTotal >= 720 && currentTotal < 840) {
-                        nextOpenStr = "hoje às 14:00"; // Horário de Almoço de Sábado
-                    } else {
-                        nextOpenStr = "segunda-feira às 08:00";
+
+                if (isCurrentlyOpen) {
+                    storeStatusStr = "ABERTA";
+                } else {
+                    storeStatusStr = "FECHADA";
+                    // Checa se abre mais tarde hoje
+                    let foundLaterToday = false;
+                    for (const range of todaySchedule) {
+                        const [startH, startM] = range.start.split(':').map(Number);
+                        const startTotal = startH * 60 + startM;
+                        if (currentTotal < startTotal) {
+                            nextOpenStr = `hoje às ${range.start}`;
+                            foundLaterToday = true;
+                            break;
+                        }
                     }
-                }
-                // Lógica de Domingo (Dia 0)
-                else {
-                    nextOpenStr = "segunda-feira às 08:00";
+
+                    // Se não abre mais hoje, busca o próximo dia que abre
+                    if (!foundLaterToday) {
+                        for (let offset = 1; offset <= 7; offset++) {
+                            const nextDay = (currentDayOfWeekly + offset) % 7;
+                            const nextSchedule = settings.workingHours[nextDay] || [];
+                            if (nextSchedule.length > 0) {
+                                const firstRange = nextSchedule[0];
+                                const dayLabel = offset === 1 ? (nextDay === 6 ? "amanhã (sábado)" : "amanhã") : dayNames[nextDay];
+                                nextOpenStr = `${dayLabel} às ${firstRange.start}`;
+                                break;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -835,5 +861,6 @@ module.exports = {
     verifyProductImageWithCatalog,
     expandSearchQuery,
     semanticPreRanking,
-    naturalizeTriageQuestion
+    naturalizeTriageQuestion,
+    invalidateExceptionsCache
 };
