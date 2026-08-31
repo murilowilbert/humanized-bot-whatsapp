@@ -291,9 +291,18 @@ async function setupEvents() {
                 const authDir = path.join(__dirname, '../auth_info_baileys');
                 try {
                     if (fs.existsSync(authDir)) {
-                        fs.rmSync(authDir, { recursive: true, force: true });
-                        fs.mkdirSync(authDir, { recursive: true });
-                        console.log('🔑 [Auth] Sessão limpa com sucesso.');
+                        const files = fs.readdirSync(authDir);
+                        for (const file of files) {
+                            const fullPath = path.join(authDir, file);
+                            try {
+                                if (fs.lstatSync(fullPath).isDirectory()) {
+                                    fs.rmSync(fullPath, { recursive: true, force: true });
+                                } else {
+                                    fs.unlinkSync(fullPath);
+                                }
+                            } catch (e) {}
+                        }
+                        console.log('🔑 [Auth] Arquivos da sessão limpos com sucesso.');
                     }
                 } catch (e) {
                     console.error('🔑 [Auth] Falha ao limpar sessão antiga:', e.message);
@@ -1193,6 +1202,14 @@ async function initialize() {
         const { version } = await fetchLatestBaileysVersion();
 
         console.log(`using WA v${version.join('.')}`);
+
+        if (sock) {
+            try {
+                if (sock.ws) sock.ws.close();
+                else if (sock.end) sock.end(undefined);
+            } catch (e) {}
+            sock = null;
+        }
 
         sock = makeWASocket({
             version,

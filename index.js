@@ -17,9 +17,18 @@ function handleFatalCryptoError(err, type) {
         const authDir = path.join(__dirname, 'auth_info_baileys');
         try {
             if (fs.existsSync(authDir)) {
-                fs.rmSync(authDir, { recursive: true, force: true });
-                fs.mkdirSync(authDir, { recursive: true });
-                console.log('🔑 [Auto-Recovery] Sessão limpa com sucesso. Reiniciando em 3s...');
+                const files = fs.readdirSync(authDir);
+                for (const file of files) {
+                    const fullPath = path.join(authDir, file);
+                    try {
+                        if (fs.lstatSync(fullPath).isDirectory()) {
+                            fs.rmSync(fullPath, { recursive: true, force: true });
+                        } else {
+                            fs.unlinkSync(fullPath);
+                        }
+                    } catch (e) {}
+                }
+                console.log('🔑 [Auto-Recovery] Arquivos da sessão limpos com sucesso. Reiniciando em 3s...');
             }
         } catch (cleanErr) {
             console.error('🔑 [Auto-Recovery] Falha ao limpar sessão:', cleanErr.message);
