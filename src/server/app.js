@@ -55,18 +55,27 @@ app.get('/admin/dashboard', authMiddleware, (req, res) => {
     res.sendFile(path.join(__dirname, '../public/dashboard.html'));
 });
 
+let latestQR = null;
+
 // Store IO instance globally to be used by bot.js (via export or event bus)
-// For simplicity, we'll export a function to emit events
 function emitEvent(event, data) {
+    if (event === 'qr') {
+        latestQR = data;
+    } else if (event === 'ready' && data === true) {
+        latestQR = null;
+    }
     io.emit(event, data);
 }
 
 // Socket Connection
 io.on('connection', (socket) => {
     console.log('Cliente Web conectado');
-    // Send current status immediately
     const bot = require('../bot');
-    socket.emit('status', { enabled: botEnabled, testMode: testMode, fullStockEnabled: fullStockEnabled, initialized: bot.isInitialized ? bot.isInitialized() : false });
+    const isBotReady = bot.isInitialized ? bot.isInitialized() : false;
+    socket.emit('status', { enabled: botEnabled, testMode: testMode, fullStockEnabled: fullStockEnabled, initialized: isBotReady });
+    if (latestQR && !isBotReady) {
+        socket.emit('qr', latestQR);
+    }
 });
 
 // API Routes

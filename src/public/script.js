@@ -148,15 +148,25 @@ socket.on('status', (data) => {
 });
 
 socket.on('qr', (qrData) => {
-    document.getElementById('qr-container').style.display = 'block';
+    if (!qrData) return;
+    const qrContainer = document.getElementById('qr-container');
+    if (qrContainer) {
+        qrContainer.style.display = 'block';
+        qrContainer.classList.remove('hidden');
+    }
     const qrDiv = document.getElementById('qrcode');
+    if (!qrDiv) return;
     qrDiv.innerHTML = "";
     new QRCode(qrDiv, { text: qrData, width: 220, height: 220, colorDark: "#000000", colorLight: "#ffffff" });
 });
 
 socket.on('ready', (isReady) => {
     if (!isReady) return;
-    document.getElementById('qr-container').style.display = 'none';
+    const qrContainer = document.getElementById('qr-container');
+    if (qrContainer) {
+        qrContainer.style.display = 'none';
+        qrContainer.classList.add('hidden');
+    }
 });
 
 // Simulated Log Stream for the Cyber-Terminal

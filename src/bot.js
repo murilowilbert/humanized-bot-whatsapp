@@ -262,7 +262,7 @@ async function sendHumanLikeResponse(jid, text) {
     }
 }
 
-let isDeliberateClose = false;
+let qrAttemptCount = 0;
 
 async function setupEvents() {
     sock.ev.on('creds.update', (...args) => {
@@ -273,7 +273,8 @@ async function setupEvents() {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            console.log('QR RECEIVED (Verifique no Dashboard)');
+            qrAttemptCount++;
+            console.log(`[QR Code] Novo QR Code gerado (Tentativa #${qrAttemptCount}).`);
             qrcode.generate(qr, { small: true });
             server.emitEvent('qr', qr);
         }
@@ -285,6 +286,8 @@ async function setupEvents() {
             console.log('connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
             initialized = false;
             server.emitEvent('ready', false);
+
+            const reconnectDelay = qrAttemptCount > 4 ? 30000 : 3000;
 
             if (isLoggedOut) {
                 console.error('🔑 [Auth] Sessão desconectada/expirada no WhatsApp (401 Unauthorized). Resetando sessão antiga para gerar novo QR Code...');
@@ -309,14 +312,18 @@ async function setupEvents() {
                 }
                 setTimeout(() => {
                     initialize();
-                }, 2000);
+                }, reconnectDelay);
             } else if (shouldReconnect) {
+                if (qrAttemptCount > 4) {
+                    console.log(`[QR Backoff] Múltiplas tentativas de QR Code sem leitura. Aguardando ${reconnectDelay / 1000}s antes de tentar novamente.`);
+                }
                 setTimeout(() => {
                     initialize();
-                }, 2000);
+                }, reconnectDelay);
             }
         } else if (connection === 'open') {
             console.log('Client is ready!');
+            qrAttemptCount = 0;
             isDeliberateClose = false;
             initialized = true;
             server.emitEvent('ready', true);
