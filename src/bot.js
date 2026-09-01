@@ -263,6 +263,7 @@ async function sendHumanLikeResponse(jid, text) {
 }
 
 let qrAttemptCount = 0;
+let isDeliberateClose = false;
 
 async function setupEvents() {
     sock.ev.on('creds.update', (...args) => {
@@ -1194,6 +1195,7 @@ async function setupEvents() {
 
 async function initialize() {
     if (initialized) return;
+    isDeliberateClose = false;
 
     try {
         // Restaura estados de pausa do disco (sobrevive a reinícios)
