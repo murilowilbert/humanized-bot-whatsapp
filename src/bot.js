@@ -176,6 +176,36 @@ function isOpen() {
     });
 }
 
+function splitIntoBubbles(text) {
+    if (!text) return [];
+    // 1. Divide inicialmente por quebras duplas de linha
+    let rawBlocks = text.split(/(?:\r?\n){2,}/).map(b => b.trim()).filter(b => b.length > 0);
+    
+    // 2. Se algum bloco contiver múltiplas tags {{COD:...}} ou múltiplos itens, subdivide para cada item ter sua bolha e foto
+    const finalBubbles = [];
+    const codTagRegex = /(?:\[|\{\{)\s*(?:COD|FOTO):\s*([\w-]+)\s*(?:\]|\}\})/gi;
+
+    for (const block of rawBlocks) {
+        const matches = Array.from(block.matchAll(codTagRegex));
+        if (matches.length > 1) {
+            const lines = block.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            let currentChunk = "";
+            for (const line of lines) {
+                if (currentChunk.length > 0 && (line.match(/^[-*👉•]/) || line.match(codTagRegex))) {
+                    finalBubbles.push(currentChunk.trim());
+                    currentChunk = line;
+                } else {
+                    currentChunk = currentChunk ? (currentChunk + "\n" + line) : line;
+                }
+            }
+            if (currentChunk.trim().length > 0) finalBubbles.push(currentChunk.trim());
+        } else {
+            finalBubbles.push(block);
+        }
+    }
+    return finalBubbles;
+}
+
 /**
  * Splits a text into multiple parts and sends them with a small delay.
  * Checks for [COD: xxx] locally in each part and sends an image if found.
@@ -183,22 +213,14 @@ function isOpen() {
 async function sendHumanLikeResponse(jid, text) {
     if (!text) return;
 
-    // 1. Extrai TODOS os códigos da resposta inteira para checar se é "Vitrine Rica" (Múltiplos Itens)
-    const regexCodGlobalTotal = /(?:\[|\{\{)\s*(?:COD|FOTO):\s*([\w-]+)\s*(?:\]|\}\})/gi;
-    const allCodMatches = Array.from(text.matchAll(regexCodGlobalTotal));
-    
-    // Agora que temos Try/Catch robusto na imagem, o Dispatcher aguenta Vitrine Rica.
-    const shouldAttachMedia = true;
-
-    // Resolve as partes por parágrafo
-    const parts = text.split(/(?:\r?\n)+/).filter(p => p.trim().length > 2);
+    const parts = splitIntoBubbles(text);
 
     for (let i = 0; i < parts.length; i++) {
         let part = parts[i].trim();
         if (!part) continue;
 
         // Limpa asterisco/hífen de lista no início da linha por emoji de seta (👉)
-        part = part.replace(/^[-*]\s+/g, '👉 ');
+        part = part.replace(/^[-*]\s+/gm, '👉 ');
 
         const regexCodGlobal = /(?:\[|\{\{)\s*(?:COD|FOTO):\s*([\w-]+)\s*(?:\]|\}\})/gi;
         const codMatches = Array.from(part.matchAll(regexCodGlobal));
@@ -209,38 +231,50 @@ async function sendHumanLikeResponse(jid, text) {
 
         // Encontra o buffer da imagem
         let fileToSend = null;
-        if (shouldAttachMedia && extractedCodes.length > 0) {
-            const cod = extractedCodes[0];
-            const pathsToCheck = [
-                path.join(__dirname, `../data/fotos/${cod}.jpg`),
-                path.join(__dirname, `../data/fotos/${cod}.png`),
-                path.join(__dirname, `../data/fotos_sheets/${cod}.jpg`),
-                path.join(__dirname, `../data/fotos_sheets/${cod}.png`),
-                path.join(__dirname, `../assets/imagens_produtos/${cod}.jpg`),
-                path.join(__dirname, `../assets/imagens_produtos/${cod}.png`)
+        let matchedCode = null;
+        if (extractedCodes.length > 0) {
+            matchedCode = extractedCodes[0];
+            const extensions = ['.png', '.jpg', '.jpeg', '.webp'];
+            const directories = [
+                path.join(__dirname, '../data/fotos'),
+                path.join(__dirname, '../data/fotos_sheets'),
+                path.join(__dirname, '../assets/imagens_produtos')
             ];
-            fileToSend = pathsToCheck.find(p => fs.existsSync(p));
+
+            for (const dir of directories) {
+                for (const ext of extensions) {
+                    const candidatePath = path.join(dir, `${matchedCode}${ext}`);
+                    if (fs.existsSync(candidatePath)) {
+                        fileToSend = candidatePath;
+                        break;
+                    }
+                }
+                if (fileToSend) break;
+            }
         }
 
         try {
             let mediaSuccess = false;
             if (fileToSend) {
                 try {
-                    // Tenta o envio da imagem
+                    console.log(`[Mídia Dispatcher] 📸 Enviando foto do produto (${matchedCode}) localizada em: ${fileToSend}`);
+                    const imgBuffer = fs.readFileSync(fileToSend);
                     const sentMsg = await sock.sendMessage(jid, {
-                        image: { url: fileToSend },
+                        image: imgBuffer,
                         caption: part.length > 0 ? part : undefined
                     });
                     if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
-                    mediaSuccess = true; // Se não lançou erro, sucesso!
+                    mediaSuccess = true;
                 } catch (mediaError) {
                     console.error(`[Mídia Dispatcher] Falha ao enviar foto ${fileToSend}, fazendo fallback de texto:`, mediaError.message);
-                    mediaSuccess = false; // Força o fallback text-only
+                    mediaSuccess = false;
                 }
+            } else if (matchedCode) {
+                console.warn(`[Mídia Dispatcher] ⚠️ Tag de foto {{COD:${matchedCode}}} encontrada, mas nenhum arquivo correspondente foi localizado no disco.`);
             }
             
-            // Fallback Text-Only: Foto não existe ou ocorreu erro no upload dela (Graceful Degradation)
-            if(!mediaSuccess) {
+            // Fallback Text-Only: Foto não existe ou ocorreu erro no upload dela
+            if (!mediaSuccess) {
                 if (part.length > 0) {
                     const sentMsg = await sock.sendMessage(jid, { text: part });
                     if (sentMsg?.key?.id) botSentMessageIds.add(sentMsg.key.id);
@@ -251,7 +285,6 @@ async function sendHumanLikeResponse(jid, text) {
             await new Promise(resolve => setTimeout(resolve, 800));
         } catch (error) {
             console.error(`Erro GERAL ao enviar bolha (Index ${i}):`, error);
-            // Último nível absoluto de fallback
             try { 
                 if (part.length > 0) {
                     const sentMsg = await sock.sendMessage(jid, { text: part });

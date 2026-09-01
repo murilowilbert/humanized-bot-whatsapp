@@ -25,6 +25,14 @@ const testScenarios = [
     {
         name: "Test 5: Price confusion check (cano 150mm)",
         query: "Cano 150mm"
+    },
+    {
+        name: "Test 6: Photo request with previous context (tem fotos?)",
+        query: "tem fotos?",
+        history: [
+            { role: 'user', content: 'oq vcs tem chuveiro?' },
+            { role: 'model', content: 'Temos a Ducha Maxiducha Lorenzetti por R$110,00 e a Ducha Loren Shower Lorenzetti por R$179,00.' }
+        ]
     }
 ];
 
@@ -36,7 +44,7 @@ async function runScenario(scenario) {
 
     const userText = scenario.query;
     // Simulate current user message being part of the conversation history
-    const recentHistory = [
+    const recentHistory = scenario.history ? [...scenario.history, { role: 'user', content: userText }] : [
         { role: 'user', content: userText }
     ];
 

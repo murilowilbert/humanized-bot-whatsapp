@@ -690,6 +690,7 @@ REGRAS:
 16. CORREÇÃO ORTOGRÁFICA: Contexto de ferragem. 'acento'='assento', 'xave'='chave'. Corrija silenciosamente.
 17. MULTI-PRODUTO: 2+ produtos distintos → termos SEPARADOS para cada. Nunca misture nomes.
 18. SINÔNIMOS TÉCNICOS: "peça porcelana/fio terra"→"conector porcelana"; "espelho tomada"→"espelho"; "joelho cano"→"joelho","cotovelo"; "presilha cano"→"abraçadeira"; "cano fogão/chaminé"→"cano fogão","chaminé","cano galvanizado".
+19. PEDIDO DE FOTOS OU DETALHES ("tem fotos?", "manda foto", "foto", "tem imagem", "mostra foto", "pode mandar foto"): Olhe o histórico recente imediatamente anterior. Identifique o produto ou categoria que o bot ou o cliente acabou de listar/conversar e retorne os termos desse produto/categoria para recarregar o estoque e permitir o envio das fotos! (Ex: Histórico sobre chuveiro + "tem fotos?" → ["chuveiro", "ducha"]).
 
 ### ENTRADAS:
 Mensagem: "${sanitizedMessage}"
