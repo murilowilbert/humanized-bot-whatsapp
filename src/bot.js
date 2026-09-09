@@ -1053,6 +1053,16 @@ async function setupEvents() {
 
                 // --------- SE CHEGOU AQUI, É SEGURO RESPONDER ---------
 
+                // Silêncio Inteligente: Se a IA indicou [NO_RESPONSE]
+                if (response.noResponse || (!response.text && !response.needsHandoff)) {
+                    console.log(`[Silêncio Inteligente] IA optou por não responder (NO_RESPONSE). Ciclo finalizado para ${headers}.`);
+                    if (interactionTimeouts.has(jid)) {
+                        clearTimeout(interactionTimeouts.get(jid));
+                        interactionTimeouts.delete(jid);
+                    }
+                    return;
+                }
+
                 // DB History: Salvar a mensagem "juntada" do usuário AGORA, já que processamos com sucesso
                 await prisma.chatHistory.create({
                     data: { phoneNumber: headers, role: 'user', content: combinedText.trim() }
@@ -1141,6 +1151,9 @@ async function setupEvents() {
                     }
                 }
 
+                // Detecção de Espera de Atendente / Balcão
+                const isWaitingAttendant = response.needsHandoff || /balc[aã]o|balcao|atendente|verificar com|dar uma olhada na prateleira|nossa equipe|repassar/i.test(fullText);
+
                 // B) Human Handoff (Bloqueia repasse imediato se foi detectada a Triagem de Categorias Gerais)
                 let isTriageActive = false;
                 if (response.needsHandoff && !isTriageActive) {
@@ -1156,15 +1169,17 @@ async function setupEvents() {
                     return; // Encerra o fluxo aqui para não iniciar timer de inatividade
                 }
 
-                // E) Set Inactivity Follow-up
-                const isConversationEnd = /obrigad[oa]|valeu|tchau|até mais|até logo|agradeço|flw|falou|abraço|beleza|tmj|\ud83d\udc4d|\ud83d\ude4f|\ud83d\ude0a/i.test(combinedText);
+                // E) Set Inactivity Follow-up (Apenas se o cliente não estiver aguardando atendimento humano)
+                const isConversationEnd = /^(n[aã]o|n[aã]o precisa|n[aã]o obrigado|s[oó] isso|nada mais|nada|tranquilo|ok|beleza|perfeito|valeu|obrigad[oa]|tchau|at[eé] mais)/i.test(combinedText.trim()) ||
+                    /obrigad[oa]|valeu|tchau|até mais|até logo|agradeço|flw|falou|abraço|beleza|tmj|\ud83d\udc4d|\ud83d\ude4f|\ud83d\ude0a/i.test(combinedText);
 
-                if (isConversationEnd) {
-                    // Morte ao Zombie Follow-up: Limpa o timer rigidamente em conversas finalizadas organicamente
+                if (isConversationEnd || isWaitingAttendant) {
+                    // Morte ao Zombie Follow-up: Limpa o timer rigidamente em conversas finalizadas ou em espera de balcão
                     if (interactionTimeouts.has(jid)) {
                         clearTimeout(interactionTimeouts.get(jid));
                         interactionTimeouts.delete(jid);
                     }
+                    console.log(`[Timer Inatividade] Cancelado para ${headers} (Fim de conversa / Espera balcão: isEnd=${isConversationEnd}, isWaiting=${isWaitingAttendant})`);
                 } else {
                     // Check if we literally just asked this a few minutes ago.
                     const recentBotMsgs = await prisma.chatHistory.findMany({
@@ -1178,7 +1193,7 @@ async function setupEvents() {
                     if (!alreadyAskedFollowUp) {
                         const timeoutId = setTimeout(async () => {
                             if (!sock) return;
-                            // PROTEÇÃO CRÍTICA: Não enviar follow-up se o chat está em handoff
+                            // PROTEÇÃO CRÍTICA: Não enviar follow-up se o chat está em handoff ou pausa
                             if (userPausedStates.has(jid)) {
                                 console.log(`[Inatividade] Chat ${headers} em handoff. Cancelando follow-up.`);
                                 interactionTimeouts.delete(jid);

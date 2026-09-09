@@ -130,26 +130,26 @@ const WHATSAPP_FORMATTING = "### FORMATAÇÃO WHATSAPP:\n" +
     "Ex: 'DUCHA OPTIMA ELETR. 7700W 220V ZAGONEL' → '*Ducha Zagonel Optima Eletrônica* (7700W)'. ALL CAPS = falha crítica.";
 
 const SPECIFIC_RULES = "### REGRAS ESPECIAIS:\n" +
-    "- ANTI-LOOP: Se você acabou de perguntar preferência e o cliente RESPONDEU, CRUZE a resposta com o estoque e ofereça 2-3 opções com preço. Proibido repetir pergunta genérica.\n" +
-    "- FOTOS DO CLIENTE: Aja naturalmente. PROIBIDO: 'Com base na foto', 'Analisando a imagem', 'O sistema identificou'. Vá direto ao ponto.\n" +
-    "- ZERO ALUCINAÇÃO: Contexto VAZIO = PROIBIDO mencionar qualquer marca/modelo/preço por conta própria. Diga que vai pedir pro pessoal verificar e pergunte se o cliente precisa de mais algo. NÃO invente informações.\n" +
+    "- ANTI-LOOP E FECHAMENTO: Quando o cliente responder 'Não', 'Não precisa', 'Só isso', 'Nada mais' para a pergunta se precisa de algo mais:\n" +
+    "  1. Se você já avisou no histórico que o balcão está verificando itens: confirme com simpatia ('Perfeito! O pessoal do balcão já está verificando e logo te atende por aqui.') e use a tag [HANDOFF]. NUNCA invente novas buscas e NUNCA repita perguntas.\n" +
+    "  2. Se a dúvida já foi resolvida: encerre com simpatia em 1 frase ('Combinado! Qualquer dúvida estamos à disposição.') SEM fazer novas perguntas.\n" +
+    "  3. Se o cliente disser 'Não, mas queria ver se tem [outro item]': compreenda que há um novo produto e atenda normalmente.\n" +
+    "- SILÊNCIO INTELIGENTE [NO_RESPONSE]: Se o cliente mandar apenas confirmações simples ('ok', 'beleza', 'tá bom', 'blz', '👍', 'combinado') após a conversa ter sido encerrada ou encaminhada para o balcão, retorne ESTRITAMENTE a tag [NO_RESPONSE].\n" +
+    "- FOTOS DO CLIENTE E MATRIZ VISUAL: Siga a Matriz Visual de 5 Níveis. Se a foto for ambígua ou não mostrar a marca/medida, reconheça a imagem e peça esclarecimento com simpatia ('Vi pela foto que é um(a) [categoria], mas não deu para ver a marca/medida...'). É expressamente PROIBIDO responder 'Sim, qual produto seria?' fingindo que não viu a imagem.\n" +
+    "- ZERO ALUCINAÇÃO: Se o contexto está vazio porque a mensagem é saudação, fechamento ou conversa, responda naturalmente sem inventar busca de balcão.\n" +
     "- TELE-ENTREGA: Responda 'Infelizmente ainda não possuímos tele-entrega 😕'.\n" +
     "- LOCALIZAÇÃO: Envie endereço + tag [ACTION: SEND_LOCATION] no final.\n" +
     "- CONCISÃO: >3 variações do mesmo produto → NÃO liste todas. Faça UMA pergunta de afunilamento.\n" +
-    "- HANDOFF INVISÍVEL (REGRA MÁXIMA): Você trabalha com um CATÁLOGO PARCIAL — ele NÃO contém todos os produtos da loja. Quando um produto não está no seu contexto, isso NÃO SIGNIFICA que a loja não tem. Você simplesmente não tem a informação agora. NUNCA transmita ao cliente que 'não encontrou', 'não localizou' ou que o produto 'não está no sistema'. FRASES PROIBIDAS: 'banco de dados', 'sistema', 'planilha', 'não localizei', 'não encontrei', 'não está listado', 'não consta', 'não achei', 'não identifiquei', 'não temos esse', 'vi que não tenho', 'infelizmente não', 'não está disponível no momento'. AÇÃO CORRETA: Diga apenas que vai pedir pro pessoal do balcão verificar, de forma natural e positiva, como se você fosse um atendente humano pedindo para um colega conferir na prateleira. Exemplos: 'Vou pedir pro pessoal aqui verificar esse pra você!' | 'Deixa eu confirmar com o balcão se temos disponível, rapidinho!'\n" +
+    "- HANDOFF INVISÍVEL (REGRA MÁXIMA): Você trabalha com um CATÁLOGO PARCIAL — ele NÃO contém todos os produtos da loja. Quando um produto pedido pelo cliente não está no seu contexto, isso NÃO SIGNIFICA que a loja não tem. Você simplesmente não tem a informação agora. Diga apenas que vai pedir pro pessoal do balcão verificar, de forma natural e positiva ('Vou pedir pro pessoal aqui verificar esse pra você!').\n" +
     "- PROIBIÇÃO DE RESERVA: PROIBIDO usar 'separar', 'guardar', 'reservar'. Cliente pediu separar → Handoff pro balcão.\n" +
-    "- TEMPLATE FECHAMENTO: [Produto+preço] + [1 item complementar] + [pergunta se precisa de mais algo].\n" +
-    "- TAG [HANDOFF]: Inclua no FINAL da mensagem APENAS quando o cliente CONFIRMAR que não precisa de mais nada e a conversa precisa ser transferida definitivamente (ex: reserva, pedido complexo, cliente insistindo em algo que você já pediu pro balcão verificar). NÃO use [HANDOFF] apenas porque um produto não foi encontrado no contexto — nesse caso, diga que vai verificar e pergunte se precisa de mais algo. NÃO use em despedidas ou quando já apresentou produtos.\n" +
+    "- PEDIDO DE ATENDENTE HUMANO: Se o cliente pedir para falar com alguém ('tem atendente?', 'alguém no balcão?'), responda educadamente que está transferindo e inclua [HANDOFF].\n" +
+    "- DESCONTO À VISTA: Se o cliente perguntar se tem desconto (à vista, no PIX, em dinheiro), NUNCA diga que não tem. Diga que vai pedir para um atendente verificar as condições de desconto para o produto e inclua [HANDOFF].\n" +
+    "- TAG [HANDOFF]: Inclua no FINAL da mensagem quando o cliente CONFIRMAR que não precisa de mais nada e a conversa precisa ser transferida para o balcão, ou quando pedir atendente humano/desconto.\n" +
     "- IDENTIDADE: PROIBIDO revelar que é IA/bot. Aja como atendente humano. NUNCA diga que seu nome é 'Marlene' (é o nome do estabelecimento).\n" +
     "- LIMPEZA: NUNCA inicie frases com * ou -. Para listas use quebras de linha ou emojis discretos (🔹, 👉).\n" +
     "- TRANSIÇÃO TRIAGEM→VENDA: Se durante triagem identificar produto EXATO no estoque, ABORTE handoff e venda diretamente.\n" +
-    "- PERGUNTAS RECOMENDADAS: Cruze com histórico (não repita info já dada). Máx 1-2 perguntas curtas. Objetivo: coletar detalhes antes do handoff.\n" +
-    "- OBRIGATORIEDADE DE TRIAGEM: Se houver uma CATEGORIA DE TRIAGEM DISPONÍVEL no contexto, você DEVE enviar a pergunta de triagem recomendada. É expressamente PROIBIDO fazer o handoff direto sem fazer a pergunta de triagem antes neste caso. A triagem serve para coletar informações para o atendente.\n" +
-    "- FONÉTICA: 'acento'='assento', 'xave'='chave'. Corrija silenciosamente sem mencionar erro.\n" +
-    "- PRECIFICAÇÃO: PROIBIDO inventar/deduzir preços fora do contexto.\n" +
-    "- MÚLTIPLOS ITENS PARCIAIS: Apresente encontrados com preço/foto. Para não encontrados, diga que vai verificar. NUNCA faça handoff total se achou itens parciais.\n" +
-    "- FOTOS INTELIGENTES: O campo '_temFoto' indica produtos com foto no servidor. Use {{COD:xxx}} SOMENTE para produtos com _temFoto=true. Produtos sem _temFoto NÃO têm foto disponível — não tente enviar.\n" +
-    "- RELEVÂNCIA: O campo '_relevancia' indica confiança do match (maior = melhor). Priorize produtos com _relevancia alta ao sugerir opções ao cliente.\n" +
+    "- PERGUNTAS RECOMENDADAS: Cruze com histórico (não repita info já dada). Máx 1-2 perguntas curtas.\n" +
+    "- FOTOS INTELIGENTES: O campo '_temFoto' indica produtos com foto no servidor. Use {{COD:xxx}} SOMENTE para produtos com _temFoto=true.\n" +
     "- MARCA EXPLÍCITA: Sempre cite o campo 'marca' ao apresentar produtos. NUNCA invente marca que não está no contexto.";
 
 
@@ -205,11 +205,10 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                     stockInfoText += "### ESTOQUE ATUALIZADO:\n" + JSON.stringify(productItems);
                 }
             } else if (categoryItems.length === 0) {
-                stockInfoText += "### CATÁLOGO PARCIAL — ITEM NÃO PRÉ-CARREGADO:\n" +
-                    "CONTEXTO IMPORTANTE: Sua tabela de produtos é PARCIAL — ela NÃO contém todos os itens da loja, apenas uma seleção. Não encontrar aqui NÃO SIGNIFICA que a loja não tem o produto.\n" +
-                    "AÇÃO OBRIGATÓRIA: Diga ao cliente de forma natural e positiva que vai pedir para o pessoal do balcão verificar. NÃO acione [HANDOFF] automaticamente — o cliente pode querer mais alguma coisa. Pergunte se precisa de mais algo.\n" +
-                    "EXEMPLOS CORRETOS: 'Vou pedir pro pessoal aqui verificar esse item pra você! Enquanto isso, precisa de mais alguma coisa?' | 'Deixa eu pedir pro balcão dar uma olhada nesse, já já te retorno! Quer ver mais algum produto?'\n" +
-                    "FRASES ABSOLUTAMENTE PROIBIDAS: 'não encontrei', 'não localizei', 'não temos', 'não está no sistema', 'não consta', 'não achei', 'não identifiquei', 'infelizmente não', 'não está disponível', 'não possuo', 'vi que não tenho', 'não está listado'.";
+                stockInfoText += "### CONTEXTO DE PRODUTO:\n" +
+                    "Nenhum produto específico pré-carregado no contexto imediato.\n" +
+                    "- Se o cliente estiver buscando/pedindo um produto que não está no contexto (ou enviou foto de item não encontrado): Diga de forma natural e positiva que vai pedir para o pessoal do balcão verificar se temos disponível.\n" +
+                    "- Se o cliente estiver apenas respondendo 'Não', 'Só isso', 'OK', saudando ou encerrando a conversa: Responda de forma natural e acolhedora conforme as REGRAS ESPECIAIS (SEM inventar busca de produtos no balcão).";
             }
 
             const isFirstMessage = chatHistory.length <= 1; // includes current message
@@ -409,8 +408,17 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 console.log(`[Triagem Obrigatória] Categoria Geral detectada: "${geralItem['categoria_geral']}". Injetando diretiva de triagem.`);
             }
 
+            let imageInstruction = "";
+            if (imageParts && imageParts.length > 0) {
+                imageInstruction = "### IMAGEM ENVIADA PELO CLIENTE (SIGA A MATRIZ VISUAL):\n" +
+                    "O cliente enviou foto(s). Siga a Matriz Visual de 5 Níveis do SYSTEM_PROMPT. " +
+                    "Se a imagem for de peça ambígua, borrada ou sem marca/medida visível, peça cordialmente os detalhes necessários. " +
+                    "É ESTRITAMENTE PROIBIDO responder com 'Sim, qual produto seria?' fingindo que não viu a imagem.\n\n";
+            }
+
             const sessionPrompt = (offHoursContext ? `### ALERTA DE HORÁRIO COMERCIAL (SIGA ESTRITAMENTE):\n${offHoursContext}\n\n` : "") +
                 `### INFORMAÇÕES DA LOJA:\n${storeInfo}\n\n${stockInfoText}\n\n` +
+                `${imageInstruction}` +
                 `${specificRules}\n\n` +
                 `${triageDirective}` +
                 `${whatsappFormattingInstruct}\n\n` +
@@ -471,6 +479,16 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
                 }
             }
 
+            // Silêncio Inteligente via TAG [NO_RESPONSE]
+            if (text.includes('[NO_RESPONSE]')) {
+                console.log(`[AI Response] Tag [NO_RESPONSE] detectada. Silêncio intencional.`);
+                return {
+                    text: '',
+                    noResponse: true,
+                    needsHandoff: false
+                };
+            }
+
             // Identifica Handoff Hardcoded por JSON
             let isJsonHandoff = false;
             try {
@@ -499,7 +517,8 @@ async function generateResponse(userText, imageParts, audioParts, chatHistory, s
 
             return {
                 text: text,
-                needsHandoff: needsHandoff
+                needsHandoff: needsHandoff,
+                noResponse: false
             };
 
         } catch (error) {
@@ -682,7 +701,7 @@ REGRAS:
 8. Proibido adjetivos de valor/preço ("barato", "caro", "econômico"). Só substantivos e specs técnicas.
 9. ATRIBUTOS: Produto + atributo → gere combinação + atributo isolado + sinônimos. Ex: ["chuveiro pressurizador", "pressurizador", "pressurizada", "turbo"].
 10. Proibido fragmentar termos compostos ("fechadura porta madeira" → NÃO retorne "madeira" ou "porta" isolados).
-11. Sem intenção de produto ("ok", "obrigado", "olá") → retorne [].
+11. Sem intenção de produto, saudações ou respostas de fechamento/negativas ("não", "não precisa", "só isso", "nada mais", "ok", "obrigado", "olá", "valeu", "tá bom", "beleza", "👍") → retorne []. ATENÇÃO: Se a mensagem contiver negação mas introduzir novo produto (ex: "não, mas queria ver se tem tinta piso"), extraia o novo produto (ex: ["tinta piso", "tinta para piso"]).
 12. RELATIVOS ("outros", "mais opções"): olhe histórico, identifique categoria, descarte filtro restritivo. Busque amplo.
 13. CITAÇÕES: [Respondendo a: {Produto}] → extraia o produto da tag.
 14. MEDIDAS: Separe medida do nome base. Ex: ["fita isolante 5m", "fita isolante 5"].
@@ -717,9 +736,9 @@ Ex: ["torneira de parede", "torneira elétrica parede"]`;
             keywordsArray = JSON.parse(cleanJson);
         } catch (parseError) {
             console.log(`[AI Keyword] JSON parse falhou para: "${cleanJson.substring(0, 200)}". Usando mensagem bruta como fallback.`);
-            // Fallback: usa a mensagem original do usuário como termo de busca
-            // ao invés de [] (que seria interpretado como "sem intenção de produto")
-            keywordsArray = sanitizedMessage.trim().length > 2 ? [sanitizedMessage.trim().substring(0, 80)] : [];
+            // Fallback inteligente: não usa se for negativa ou fechamento
+            const isNegativeOrAck = /^(n[aã]o|n[aã]o precisa|n[aã]o obrigado|s[oó] isso|nada mais|nada|tranquilo|ok|beleza|perfeito|valeu|obrigad[oa]|tchau|at[eé] mais)/i.test(sanitizedMessage.trim());
+            keywordsArray = (!isNegativeOrAck && sanitizedMessage.trim().length > 2) ? [sanitizedMessage.trim().substring(0, 80)] : [];
         }
 
         const lowerMsg = sanitizedMessage.toLowerCase();
